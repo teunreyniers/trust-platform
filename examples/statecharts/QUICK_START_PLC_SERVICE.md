@@ -6,7 +6,7 @@
 
 ```bash
 # Move to your project (or use the example project)
-cd examples/statechart_backend
+cd examples/hardware_8do
 
 # Build bytecode
 sudo ../../target/release/trust-runtime build --project .

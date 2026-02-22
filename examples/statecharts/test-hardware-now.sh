@@ -10,7 +10,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/../statechart_backend" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../hardware_8do" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RUNTIME="$REPO_ROOT/target/release/trust-runtime"
 SOCKET="/tmp/trust-debug.sock"

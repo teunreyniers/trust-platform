@@ -1,7 +1,7 @@
 #!/bin/bash
-# Quick test of statechart_backend with real EtherCAT
+# Quick test of hardware_8do backend with real EtherCAT
 
-cd "$(dirname "$0")/../statechart_backend"
+cd "$(dirname "$0")/../hardware_8do"
 
 RUNTIME_BIN="../../target/release/trust-runtime"
 

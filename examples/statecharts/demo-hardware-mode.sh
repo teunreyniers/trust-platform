@@ -52,7 +52,7 @@ echo "📋 Step 2: Building Hardware Project"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-cd "$SCRIPT_DIR/../statechart_backend"
+cd "$SCRIPT_DIR/../hardware_8do"
 
 if [ -d ".trust/bundle" ]; then
     echo "⚠️  Previous build found. Rebuilding..."
@@ -76,7 +76,7 @@ sleep 1
 rm -f /tmp/trust-debug.sock
 
 echo "🚀 Starting runtime in background..."
-# Already in statechart_backend directory from Step 2
+# Already in hardware_8do directory from Step 2
 # IMPORTANT: Remove --simulation to use REAL HARDWARE
 trust-runtime run --project . &
 RUNTIME_PID=$!

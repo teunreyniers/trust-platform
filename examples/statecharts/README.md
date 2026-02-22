@@ -102,13 +102,13 @@ cd examples/statecharts
 - **Requires trust-runtime backend** running with your hardware
 - Actions execute on **real I/O** (EtherCAT, GPIO, etc.)
 - LEDs actually turn on/off following state transitions
-- Backend project: `../statechart_backend/`
+- Backend project: `../hardware_8do/`
 - See [HARDWARE_EXECUTION.md](HARDWARE_EXECUTION.md) for complete setup guide
 
 **Quick Hardware Setup:**
 ```bash
 # Terminal 1: Start the backend
-cd examples/statechart_backend
+cd examples/hardware_8do
 sudo ./start.sh
 
 # Terminal 2: Open VS Code and test

@@ -51,13 +51,13 @@ Transitioned from LED_0 to LED_1 via TICK
 
 ### Step 1: Start the Backend
 
-The backend project is located at `../statechart_backend/` and provides:
+The backend project is located at `../hardware_8do/` and provides:
 - Minimal ST program (just defines I/O variables)
 - EtherCAT or GPIO driver configuration
 - Control endpoint for VS Code communication
 
 ```bash
-cd examples/statechart_backend
+cd examples/hardware_8do
 sudo ./start.sh
 ```
 
@@ -70,7 +70,7 @@ sudo ./start.sh
 ✅ Backend is running!
 ```
 
-See `../statechart_backend/README.md` for hardware configuration details.
+See `../hardware_8do/README.md` for hardware configuration details.
 
 ### Step 2: VS Code Configuration (Optional)
 

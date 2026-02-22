@@ -121,7 +121,7 @@ Executing action: turnOn_DO1
 
 ### Current runtime integration
 
-Use the backend runtime in `examples/statechart_backend` and run statecharts in hardware mode from the VS Code editor.
+Use the backend runtime in `examples/hardware_8do` and run statecharts in hardware mode from the VS Code editor.
 
 1. Start backend runtime.
 2. Open statechart in extension host.
