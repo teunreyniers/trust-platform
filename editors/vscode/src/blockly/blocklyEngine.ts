@@ -8,7 +8,7 @@ export interface BlockDefinition {
   id: string;
   fields?: Record<string, any>;
   inputs?: Record<string, any>;
-  next?: string; // ID of the next block in sequence
+  next?: string | { block?: BlockDefinition } | null;
   x?: number;
   y?: number;
 }
@@ -42,7 +42,7 @@ export interface GeneratedCode {
 export class BlocklyEngine {
   private variables: Map<string, string> = new Map();
   private errors: string[] = [];
-  private indentLevel: number = 0;
+  private blockById: Map<string, BlockDefinition> = new Map();
 
   constructor() {}
 
@@ -52,7 +52,7 @@ export class BlocklyEngine {
   generateCode(workspace: BlocklyWorkspace): GeneratedCode {
     this.variables.clear();
     this.errors = [];
-    this.indentLevel = 0;
+    this.blockById.clear();
 
     // Process variables
     if (workspace.variables) {
@@ -69,10 +69,11 @@ export class BlocklyEngine {
     
     if (workspace.blocks && workspace.blocks.blocks) {
       for (const block of workspace.blocks.blocks) {
-        const blockCode = this.generateBlockCode(block);
-        if (blockCode) {
-          bodyLines.push(blockCode);
-        }
+        this.registerBlockTree(block);
+      }
+
+      for (const block of workspace.blocks.blocks) {
+        bodyLines.push(...this.generateStatementChain(block));
       }
     }
 
@@ -85,6 +86,51 @@ export class BlocklyEngine {
       variables: this.variables,
       errors: this.errors,
     };
+  }
+
+  private registerBlockTree(block: BlockDefinition | undefined): void {
+    if (!block || this.blockById.has(block.id)) {
+      return;
+    }
+
+    this.blockById.set(block.id, block);
+
+    if (block.inputs) {
+      for (const input of Object.values(block.inputs)) {
+        const nestedBlock = this.resolveInputBlockValue(input);
+        if (nestedBlock) {
+          this.registerBlockTree(nestedBlock);
+        }
+      }
+    }
+
+    const nextBlock = this.resolveNextBlock(block.next);
+    if (nextBlock) {
+      this.registerBlockTree(nextBlock);
+    }
+  }
+
+  private generateStatementChain(startBlock: BlockDefinition): string[] {
+    const lines: string[] = [];
+    const visited = new Set<string>();
+    let current: BlockDefinition | undefined = startBlock;
+
+    while (current) {
+      if (visited.has(current.id)) {
+        this.errors.push(`Detected cycle while generating block chain at: ${current.id}`);
+        break;
+      }
+      visited.add(current.id);
+
+      const blockCode = this.generateBlockCode(current);
+      if (blockCode) {
+        lines.push(blockCode);
+      }
+
+      current = this.resolveNextBlock(current.next);
+    }
+
+    return lines;
   }
 
   /**
@@ -137,18 +183,20 @@ export class BlocklyEngine {
    * Generate IF statement
    */
   private generateIfBlock(block: BlockDefinition): string {
-    const condition = block.inputs?.["IF"]?.block 
-      ? this.generateBlockCode(block.inputs["IF"].block)
+    const conditionBlock = this.resolveInputBlock(block, ["IF0", "IF"]);
+    const condition = conditionBlock
+      ? this.generateBlockCode(conditionBlock)
       : "FALSE";
-    
-    const doStatements = block.inputs?.["DO"]?.block
-      ? this.generateBlockCode(block.inputs["DO"].block)
-      : "";
 
-    this.indentLevel++;
-    const indent = "  ".repeat(this.indentLevel);
-    const statements = doStatements ? `\n${indent}${doStatements}` : "";
-    this.indentLevel--;
+    const doBlock = this.resolveInputBlock(block, ["DO0", "DO"]);
+    const doStatements = doBlock ? this.generateStatementChain(doBlock) : [];
+
+    const indent = "  ";
+    const statements = doStatements.length
+      ? `\n${doStatements
+          .map((statement) => this.indentMultiline(statement, indent))
+          .join("\n")}`
+      : "";
 
     return `IF ${condition} THEN${statements}\nEND_IF;`;
   }
@@ -204,7 +252,15 @@ export class BlocklyEngine {
    * Generate variable assignment
    */
   private generateSetVariableBlock(block: BlockDefinition): string {
-    const varName = block.fields?.["VAR"] || "temp";
+    const varField = block.fields?.["VAR"];
+    const varName =
+      typeof varField === "string"
+        ? varField
+        : typeof varField === "object" &&
+            varField !== null &&
+            typeof (varField as { name?: unknown }).name === "string"
+          ? (varField as { name: string }).name
+          : "temp";
     const value = block.inputs?.["VALUE"]?.block
       ? this.generateBlockCode(block.inputs["VALUE"].block)
       : "0";
@@ -254,6 +310,68 @@ export class BlocklyEngine {
   private generateNumberBlock(block: BlockDefinition): string {
     const num = block.fields?.["NUM"] || "0";
     return String(num);
+  }
+
+  private resolveInputBlock(
+    block: BlockDefinition,
+    inputNames: string[]
+  ): BlockDefinition | undefined {
+    if (!block.inputs) {
+      return undefined;
+    }
+
+    for (const inputName of inputNames) {
+      const resolved = this.resolveInputBlockValue(block.inputs[inputName]);
+      if (resolved) {
+        return resolved;
+      }
+    }
+
+    return undefined;
+  }
+
+  private resolveInputBlockValue(inputValue: unknown): BlockDefinition | undefined {
+    if (!inputValue || typeof inputValue !== "object") {
+      return undefined;
+    }
+
+    if (!("block" in inputValue)) {
+      return undefined;
+    }
+
+    return this.asBlock((inputValue as { block?: unknown }).block);
+  }
+
+  private resolveNextBlock(nextRef: BlockDefinition["next"]): BlockDefinition | undefined {
+    if (!nextRef) {
+      return undefined;
+    }
+
+    if (typeof nextRef === "string") {
+      return this.blockById.get(nextRef);
+    }
+
+    return this.asBlock(nextRef.block);
+  }
+
+  private asBlock(value: unknown): BlockDefinition | undefined {
+    if (!value || typeof value !== "object") {
+      return undefined;
+    }
+
+    const candidate = value as { id?: unknown; type?: unknown };
+    if (typeof candidate.id !== "string" || typeof candidate.type !== "string") {
+      return undefined;
+    }
+
+    return value as BlockDefinition;
+  }
+
+  private indentMultiline(code: string, indent: string): string {
+    return code
+      .split("\n")
+      .map((line) => `${indent}${line}`)
+      .join("\n");
   }
 
   /**

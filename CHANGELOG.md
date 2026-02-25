@@ -278,6 +278,9 @@ Target release: `v0.9.15`
 
 ### Fixed
 
+- Blockly ST generation now preserves connected statement chains (`next`) and Blockly control-slot names (`IF0`/`DO0`), preventing dropped statements in generated programs.
+- Blockly runtime control requests now clear timeout handles on response/connection teardown to avoid stale timer leaks during long editing sessions.
+- Blockly webview CSP no longer permits inline scripts.
 - VS Code statechart custom editor packaging now loads the webview template from bundled extension code instead of `src/**` runtime paths excluded by `.vscodeignore`.
 - VS Code statechart editor lifecycle now stops active execution sessions when the panel closes, ensuring timers/runtime connections are cleaned up.
 - State machine engine transition execution now awaits exit/transition/entry hardware actions before completing transitions.

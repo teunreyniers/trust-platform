@@ -31,6 +31,12 @@ export interface ControlResponse {
   error?: string;
 }
 
+interface PendingRequest {
+  resolve: (value: any) => void;
+  reject: (error: Error) => void;
+  timeout: NodeJS.Timeout;
+}
+
 /**
  * Client for sending commands to trust-runtime control endpoint from Blockly
  */
@@ -41,7 +47,7 @@ export class RuntimeClient {
   private authToken?: string;
   private requestTimeoutMs: number;
   private buffer = "";
-  private pendingRequests = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
+  private pendingRequests = new Map<number, PendingRequest>();
 
   constructor(config: RuntimeConfig) {
     this.endpoint = config.controlEndpoint;
@@ -54,6 +60,8 @@ export class RuntimeClient {
    */
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
+      let settled = false;
+
       try {
         // Parse endpoint
         if (this.endpoint.startsWith("tcp://")) {
@@ -63,6 +71,7 @@ export class RuntimeClient {
             { host, port: parseInt(port, 10) },
             () => {
               console.log("Blockly: Connected to trust-runtime via TCP:", address);
+              settled = true;
               resolve();
             }
           );
@@ -70,9 +79,11 @@ export class RuntimeClient {
           const socketPath = this.endpoint.replace("unix://", "");
           this.socket = net.createConnection(socketPath, () => {
             console.log("Blockly: Connected to trust-runtime via Unix socket:", socketPath);
+            settled = true;
             resolve();
           });
         } else {
+          settled = true;
           reject(new Error(`Invalid control endpoint format: ${this.endpoint}`));
           return;
         }
@@ -84,15 +95,21 @@ export class RuntimeClient {
 
         this.socket.on("error", (err) => {
           console.error("Blockly: Runtime connection error:", err);
-          reject(err);
+          this.rejectAllPending(err instanceof Error ? err : new Error(String(err)));
+          if (!settled) {
+            settled = true;
+            reject(err);
+          }
         });
 
         this.socket.on("close", () => {
           console.log("Blockly: Runtime connection closed");
+          this.rejectAllPending(new Error("Connection closed"));
           this.socket = null;
         });
 
       } catch (error) {
+        settled = true;
         reject(error);
       }
     });
@@ -113,6 +130,7 @@ export class RuntimeClient {
         const pending = this.pendingRequests.get(response.id);
         
         if (pending) {
+          clearTimeout(pending.timeout);
           this.pendingRequests.delete(response.id);
           if (response.ok) {
             pending.resolve(response.result);
@@ -134,11 +152,43 @@ export class RuntimeClient {
       this.socket.destroy();
       this.socket = null;
     }
-    // Reject all pending requests
-    for (const [id, { reject }] of this.pendingRequests) {
-      reject(new Error("Connection closed"));
+    this.rejectAllPending(new Error("Connection closed"));
+  }
+
+  private rejectAllPending(error: Error): void {
+    for (const [id, pending] of this.pendingRequests) {
+      clearTimeout(pending.timeout);
+      pending.reject(error);
+      this.pendingRequests.delete(id);
     }
-    this.pendingRequests.clear();
+  }
+
+  private sendRequest(request: ControlRequest): Promise<any> {
+    if (!this.socket) {
+      return Promise.reject(new Error("Not connected to runtime"));
+    }
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(request.id);
+        reject(new Error("Request timeout"));
+      }, this.requestTimeoutMs);
+
+      this.pendingRequests.set(request.id, { resolve, reject, timeout });
+
+      this.socket!.write(JSON.stringify(request) + "\n", (err) => {
+        if (!err) {
+          return;
+        }
+
+        const pending = this.pendingRequests.get(request.id);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          this.pendingRequests.delete(request.id);
+        }
+        reject(err);
+      });
+    });
   }
 
   /**
@@ -157,22 +207,7 @@ export class RuntimeClient {
       params: { address, value },
     };
 
-    return new Promise((resolve, reject) => {
-      this.pendingRequests.set(id, { resolve, reject });
-
-      const timeout = setTimeout(() => {
-        this.pendingRequests.delete(id);
-        reject(new Error("Request timeout"));
-      }, this.requestTimeoutMs);
-
-      this.socket!.write(JSON.stringify(request) + "\n", (err) => {
-        if (err) {
-          clearTimeout(timeout);
-          this.pendingRequests.delete(id);
-          reject(err);
-        }
-      });
-    });
+    await this.sendRequest(request);
   }
 
   /**
@@ -190,22 +225,7 @@ export class RuntimeClient {
       auth: this.authToken,
     };
 
-    return new Promise((resolve, reject) => {
-      this.pendingRequests.set(id, { resolve, reject });
-
-      const timeout = setTimeout(() => {
-        this.pendingRequests.delete(id);
-        reject(new Error("Request timeout"));
-      }, this.requestTimeoutMs);
-
-      this.socket!.write(JSON.stringify(request) + "\n", (err) => {
-        if (err) {
-          clearTimeout(timeout);
-          this.pendingRequests.delete(id);
-          reject(err);
-        }
-      });
-    });
+    await this.sendRequest(request);
   }
 
   /**
@@ -223,22 +243,7 @@ export class RuntimeClient {
       auth: this.authToken,
     };
 
-    return new Promise((resolve, reject) => {
-      this.pendingRequests.set(id, { resolve, reject });
-
-      const timeout = setTimeout(() => {
-        this.pendingRequests.delete(id);
-        reject(new Error("Request timeout"));
-      }, this.requestTimeoutMs);
-
-      this.socket!.write(JSON.stringify(request) + "\n", (err) => {
-        if (err) {
-          clearTimeout(timeout);
-          this.pendingRequests.delete(id);
-          reject(err);
-        }
-      });
-    });
+    await this.sendRequest(request);
   }
 
   /**

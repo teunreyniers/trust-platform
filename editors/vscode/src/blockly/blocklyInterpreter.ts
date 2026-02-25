@@ -82,6 +82,26 @@ export class BlocklyInterpreter {
     }
   }
 
+  private resolveNextId(nextRef: BlockDefinition["next"]): string | undefined {
+    if (!nextRef) {
+      return undefined;
+    }
+
+    if (typeof nextRef === "string") {
+      return nextRef;
+    }
+
+    if (
+      typeof nextRef === "object" &&
+      nextRef.block &&
+      typeof nextRef.block.id === "string"
+    ) {
+      return nextRef.block.id;
+    }
+
+    return undefined;
+  }
+
   /**
    * Get variable name from field value (handles both string and {id: string} formats)
    */
@@ -118,8 +138,9 @@ export class BlocklyInterpreter {
     
     for (const block of this.blocks.values()) {
       // Blocks referenced via next
-      if (block.next && typeof block.next === 'string') {
-        referencedBlocks.add(block.next);
+      const nextId = this.resolveNextId(block.next);
+      if (nextId) {
+        referencedBlocks.add(nextId);
       }
       
       // Blocks referenced via inputs
@@ -216,8 +237,9 @@ export class BlocklyInterpreter {
       }
 
       // Execute next block in sequence
-      if (blockDef.next) {
-        const nextBlock = this.blocks.get(blockDef.next);
+      const nextId = this.resolveNextId(blockDef.next);
+      if (nextId) {
+        const nextBlock = this.blocks.get(nextId);
         if (nextBlock) {
           await this.executeBlock(nextBlock);
         }
