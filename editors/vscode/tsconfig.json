@@ -17,6 +17,7 @@
     ".vscode-test",
     "src/statechart/webview/**",
     "src/blockly/webview/**",
-    "src/ladder/webview/**"
+    "src/ladder/webview/**",
+    "src/visual/runtime/webview/**"
   ]
 }

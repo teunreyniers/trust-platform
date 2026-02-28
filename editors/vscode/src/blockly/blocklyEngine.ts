@@ -88,6 +88,35 @@ export class BlocklyEngine {
     };
   }
 
+  /**
+   * Generate ST code as a FUNCTION_BLOCK so visual logic can be mixed with
+   * handwritten ST in one program.
+   */
+  generateFunctionBlockCode(
+    workspace: BlocklyWorkspace,
+    functionBlockName?: string
+  ): GeneratedCode {
+    const generated = this.generateCode(workspace);
+    const defaultName = workspace.metadata?.name || "BlocklyProgram";
+    const fbName = this.sanitizePouName(
+      functionBlockName || `FB_${defaultName}_BLOCKLY`
+    );
+    const headerReplaced = generated.structuredText.replace(
+      /^PROGRAM\s+[^\r\n]+/m,
+      `FUNCTION_BLOCK ${fbName}`
+    );
+    const structuredText = headerReplaced.replace(
+      /END_PROGRAM\s*$/m,
+      "END_FUNCTION_BLOCK"
+    );
+
+    return {
+      structuredText,
+      variables: generated.variables,
+      errors: generated.errors,
+    };
+  }
+
   private registerBlockTree(block: BlockDefinition | undefined): void {
     if (!block || this.blockById.has(block.id)) {
       return;
@@ -372,6 +401,22 @@ export class BlocklyEngine {
       .split("\n")
       .map((line) => `${indent}${line}`)
       .join("\n");
+  }
+
+  private sanitizePouName(raw: string): string {
+    const normalized = raw
+      .trim()
+      .replace(/[^A-Za-z0-9_]/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+/, "")
+      .replace(/_+$/, "");
+    if (!normalized) {
+      return "FB_BlocklyGenerated";
+    }
+    if (/^[0-9]/.test(normalized)) {
+      return `_${normalized}`;
+    }
+    return normalized;
   }
 
   /**

@@ -1,5 +1,10 @@
 import * as vscode from "vscode";
 import { asUri, pathExists } from "./uriUtils";
+import {
+  openCompanionForVisualSource,
+  openCompanionOnCreateEnabled,
+  syncVisualCompanionFromUri,
+} from "../visual/companionSt";
 
 type NewStatechartArgs = {
   targetUri?: vscode.Uri | string;
@@ -158,13 +163,16 @@ export function registerNewStatechartCommand(
 
         try {
           await writeStatechart(targetUri, name);
+          const companionUri = await syncVisualCompanionFromUri(targetUri, {
+            force: true,
+            showErrors: true,
+          });
 
-          // Open with the custom StateChart editor
-          await vscode.commands.executeCommand(
-            "vscode.openWith",
-            targetUri,
-            "trust-lsp.statechartEditor"
-          );
+          if (openCompanionOnCreateEnabled(targetUri) && companionUri) {
+            await openCompanionForVisualSource(targetUri);
+          } else {
+            await vscode.commands.executeCommand("vscode.open", targetUri);
+          }
 
           vscode.window.showInformationMessage(
             `UML Statechart created: ${targetUri.fsPath}`

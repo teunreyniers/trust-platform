@@ -3,25 +3,37 @@ import React from "react";
 interface ToolbarProps {
   selectedTool: string | null;
   onToolSelect: (tool: string | null) => void;
-  selectedMode: "simulation" | "hardware";
-  onModeSelect: (mode: "simulation" | "hardware") => void;
-  isExecuting: boolean;
-  onRun: () => void;
-  onStop: () => void;
   onAddRung: () => void;
+  onRemoveRung: () => void;
+  canRemoveRung: boolean;
   onSave: () => void;
+  onAutoRoute: () => void;
+  onSearchReplace: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  onCopy: () => void;
+  onPaste: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  canPaste: boolean;
 }
 
 export function Toolbar({
   selectedTool,
   onToolSelect,
-  selectedMode,
-  onModeSelect,
-  isExecuting,
-  onRun,
-  onStop,
   onAddRung,
-  onSave
+  onRemoveRung,
+  canRemoveRung,
+  onSave,
+  onAutoRoute,
+  onSearchReplace,
+  onUndo,
+  onRedo,
+  onCopy,
+  onPaste,
+  canUndo,
+  canRedo,
+  canPaste,
 }: ToolbarProps) {
   return (
     <div className="toolbar">
@@ -45,7 +57,6 @@ export function Toolbar({
           className={`toolbar-button ${selectedTool === 'timer' ? 'active' : ''}`}
           onClick={() => onToolSelect(selectedTool === 'timer' ? null : 'timer')}
           title="Add Timer"
-          disabled
         >
           [T] Timer
         </button>
@@ -53,9 +64,22 @@ export function Toolbar({
           className={`toolbar-button ${selectedTool === 'counter' ? 'active' : ''}`}
           onClick={() => onToolSelect(selectedTool === 'counter' ? null : 'counter')}
           title="Add Counter"
-          disabled
         >
           [C] Counter
+        </button>
+        <button
+          className={`toolbar-button ${selectedTool === 'compare' ? 'active' : ''}`}
+          onClick={() => onToolSelect(selectedTool === 'compare' ? null : 'compare')}
+          title="Add Comparator"
+        >
+          [GT] Compare
+        </button>
+        <button
+          className={`toolbar-button ${selectedTool === 'math' ? 'active' : ''}`}
+          onClick={() => onToolSelect(selectedTool === 'math' ? null : 'math')}
+          title="Add Math Block"
+        >
+          [+] Math
         </button>
       </div>
 
@@ -68,43 +92,63 @@ export function Toolbar({
         >
           ➕ Add Rung
         </button>
-      </div>
-
-      <div className="toolbar-section">
-        <h3>Mode</h3>
         <button
-          className={`toolbar-button ${selectedMode === 'simulation' ? 'active' : ''}`}
-          onClick={() => onModeSelect('simulation')}
+          className="toolbar-button"
+          onClick={onRemoveRung}
+          title="Remove selected rung"
+          disabled={!canRemoveRung}
         >
-          🖥️ Simulation
-        </button>
-        <button
-          className={`toolbar-button ${selectedMode === 'hardware' ? 'active' : ''}`}
-          onClick={() => onModeSelect('hardware')}
-        >
-          ⚡ Hardware
+          ➖ Remove Rung
         </button>
       </div>
 
       <div className="toolbar-section">
-        <h3>Control</h3>
-        {!isExecuting ? (
-          <button
-            className="toolbar-button success"
-            onClick={onRun}
-            title="Run program"
-          >
-            ▶️ Run
-          </button>
-        ) : (
-          <button
-            className="toolbar-button danger"
-            onClick={onStop}
-            title="Stop program"
-          >
-            ⏹️ Stop
-          </button>
-        )}
+        <h3>Edit</h3>
+        <button
+          className="toolbar-button"
+          onClick={onUndo}
+          disabled={!canUndo}
+          title="Undo (Ctrl/Cmd+Z)"
+        >
+          ↶ Undo
+        </button>
+        <button
+          className="toolbar-button"
+          onClick={onRedo}
+          disabled={!canRedo}
+          title="Redo (Ctrl/Cmd+Y or Shift+Ctrl/Cmd+Z)"
+        >
+          ↷ Redo
+        </button>
+        <button
+          className="toolbar-button"
+          onClick={onCopy}
+          title="Copy selected element or active rung (Ctrl/Cmd+C)"
+        >
+          ⧉ Copy
+        </button>
+        <button
+          className="toolbar-button"
+          onClick={onPaste}
+          disabled={!canPaste}
+          title="Paste copied element/rung (Ctrl/Cmd+V)"
+        >
+          📋 Paste
+        </button>
+        <button
+          className="toolbar-button"
+          onClick={onSearchReplace}
+          title="Search/replace ladder symbols"
+        >
+          🔎 Replace
+        </button>
+        <button
+          className="toolbar-button"
+          onClick={onAutoRoute}
+          title="Auto-route rung wires"
+        >
+          ↹ Auto-route
+        </button>
         <button
           className="toolbar-button"
           onClick={onSave}

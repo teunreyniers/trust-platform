@@ -36,6 +36,9 @@ PLCopen compatibility matrix, migration diagnostics contract, round-trip limits,
 and known gaps are documented in:
 `docs/guides/PLCOPEN_INTEROP_COMPATIBILITY.md`.
 
+LD network-body schema v2 interop profile:
+`docs/guides/PLCOPEN_LD_INTEROP.md`.
+
 ST-complete import/export walkthrough example:
 `examples/plcopen_xml_st_complete/README.md`.
 

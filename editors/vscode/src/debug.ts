@@ -2,6 +2,11 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { getBinaryPath } from "./binary";
+import {
+  isVisualSourceUri,
+  syncVisualCompanionFromUri,
+  syncVisualRuntimeEntryFromUri,
+} from "./visual/companionSt";
 
 const DEBUG_TYPE = "structured-text";
 const DEBUG_CHANNEL = "Structured Text Debugger";
@@ -220,6 +225,112 @@ async function findConfigurationUris(): Promise<vscode.Uri[]> {
 async function isConfigurationFile(uri: vscode.Uri): Promise<boolean> {
   const text = await readStructuredText(uri);
   return !!text && containsConfiguration(text);
+}
+
+function structuredTextSession(): vscode.DebugSession | undefined {
+  const active = vscode.debug.activeDebugSession;
+  if (active && active.type === DEBUG_TYPE) {
+    return active;
+  }
+  return undefined;
+}
+
+async function resolveStartProgramUri(
+  programOverride?: string | vscode.Uri
+): Promise<vscode.Uri | undefined> {
+  let programUri: vscode.Uri | undefined;
+  if (typeof programOverride === "string" && programOverride.trim()) {
+    programUri = vscode.Uri.file(programOverride.trim());
+  } else if (programOverride instanceof vscode.Uri) {
+    programUri = programOverride;
+  }
+
+  if (!programUri) {
+    return ensureConfigurationEntryAuto();
+  }
+
+  if (isVisualSourceUri(programUri)) {
+    const syncedCompanion = await syncVisualCompanionFromUri(programUri, {
+      force: true,
+      showErrors: true,
+    });
+    if (!syncedCompanion) {
+      vscode.window.showErrorMessage(
+        `Failed to generate ST companion for ${path.basename(programUri.fsPath)}.`
+      );
+      return undefined;
+    }
+    const runtimeEntry = await syncVisualRuntimeEntryFromUri(programUri, {
+      force: true,
+      showErrors: true,
+    });
+    if (!runtimeEntry) {
+      vscode.window.showErrorMessage(
+        `Failed to generate runtime entry for ${path.basename(programUri.fsPath)}.`
+      );
+      return undefined;
+    }
+    return runtimeEntry;
+  }
+
+  if (!(await isConfigurationFile(programUri))) {
+    vscode.window.showErrorMessage(
+      "Debugging requires a CONFIGURATION entry file."
+    );
+    return undefined;
+  }
+  return programUri;
+}
+
+type IoCommandArgs = {
+  address?: string;
+  value?: string;
+};
+
+type ExpressionCommandArgs = {
+  expression?: string;
+  value?: string;
+};
+
+function normalizeIoCommandArgs(args: unknown[]): IoCommandArgs {
+  const first = args[0];
+  if (first && typeof first === "object") {
+    const typed = first as { address?: unknown; value?: unknown };
+    return {
+      address:
+        typeof typed.address === "string" ? typed.address.trim() : undefined,
+      value: typeof typed.value === "string" ? typed.value : undefined,
+    };
+  }
+  return {
+    address: typeof first === "string" ? first.trim() : undefined,
+    value: typeof args[1] === "string" ? args[1] : undefined,
+  };
+}
+
+function normalizeExpressionCommandArgs(args: unknown[]): ExpressionCommandArgs {
+  const first = args[0];
+  if (first && typeof first === "object") {
+    const typed = first as {
+      expression?: unknown;
+      address?: unknown;
+      value?: unknown;
+    };
+    const expression =
+      typeof typed.expression === "string"
+        ? typed.expression.trim()
+        : typeof typed.address === "string"
+          ? typed.address.trim()
+          : undefined;
+    return {
+      expression,
+      value: typeof typed.value === "string" ? typed.value : undefined,
+    };
+  }
+  return {
+    expression: typeof first === "string" ? first.trim() : undefined,
+    value: typeof args[1] === "string" ? args[1] : undefined,
+  };
 }
 
 type ProgramTypeOption = {
@@ -768,16 +879,80 @@ function resolveAdapterCommand(
   return getBinaryPath(context, "trust-debug", "debug.adapter.path");
 }
 
+function fileExists(filePath: string): boolean {
+  try {
+    return fs.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function commandHasPath(command: string): boolean {
+  return command.includes("/") || command.includes("\\");
+}
+
+function executableCandidates(command: string): string[] {
+  if (process.platform !== "win32") {
+    return [command];
+  }
+
+  if (path.extname(command)) {
+    return [command];
+  }
+
+  const pathExt =
+    process.env.PATHEXT?.split(";").filter((entry) => entry.length > 0) ?? [
+      ".EXE",
+      ".CMD",
+      ".BAT",
+      ".COM",
+    ];
+  return [command, ...pathExt.map((ext) => `${command}${ext.toLowerCase()}`)];
+}
+
+function resolveAdapterExecutable(command: string, env: NodeJS.ProcessEnv): string | undefined {
+  if (!command.trim()) {
+    return undefined;
+  }
+
+  if (path.isAbsolute(command)) {
+    return fileExists(command) ? command : undefined;
+  }
+
+  if (commandHasPath(command)) {
+    const absoluteCandidate = path.resolve(command);
+    return fileExists(absoluteCandidate) ? absoluteCandidate : undefined;
+  }
+
+  const pathVar = env.PATH ?? process.env.PATH ?? "";
+  const searchDirs = pathVar
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  const candidates = executableCandidates(command);
+
+  for (const dir of searchDirs) {
+    for (const candidate of candidates) {
+      const fullPath = path.join(dir, candidate);
+      if (fileExists(fullPath)) {
+        return fullPath;
+      }
+    }
+  }
+
+  return undefined;
+}
+
 async function ensureAdapterCommand(
   config: vscode.WorkspaceConfiguration,
   context: vscode.ExtensionContext
 ): Promise<string | undefined> {
   const command = resolveAdapterCommand(config, context);
-
-  if (path.isAbsolute(command) && !fs.existsSync(command)) {
+  const resolved = resolveAdapterExecutable(command, adapterEnv(config));
+  if (!resolved) {
     void vscode.window.showErrorMessage(
-      `Structured Text debug adapter not found at '${command}'. ` +
-        `Install the extension from the Marketplace or set trust-lsp.debug.adapter.path.`,
+      `Structured Text debug adapter '${command}' was not found. ` +
+        `Build/install trust-debug and set trust-lsp.debug.adapter.path (or add it to PATH).`,
       "Open Settings"
     ).then((choice) => {
       if (choice === "Open Settings") {
@@ -790,7 +965,8 @@ async function ensureAdapterCommand(
     return undefined;
   }
 
-  return command;
+  debugChannel().appendLine(`[trust-debug] adapter executable: ${resolved}`);
+  return resolved;
 }
 
 function adapterEnv(
@@ -883,13 +1059,11 @@ class StructuredTextDebugConfigurationProvider
         config.program = configUri.fsPath;
       } else {
         const programUri = vscode.Uri.file(config.program);
-        if (!(await isConfigurationFile(programUri))) {
-          const configUri = await ensureConfigurationEntryAuto();
-          if (!configUri) {
-            return null;
-          }
-          config.program = configUri.fsPath;
+        const resolved = await resolveStartProgramUri(programUri);
+        if (!resolved) {
+          return null;
         }
+        config.program = resolved.fsPath;
       }
     }
 
@@ -1090,27 +1264,10 @@ export function registerDebugAdapter(
     vscode.commands.registerCommand(
       "trust-lsp.debug.start",
       async (programOverride?: string | vscode.Uri) => {
-        let programUri: vscode.Uri | undefined;
+        const programUri = await resolveStartProgramUri(programOverride);
         let folder: vscode.WorkspaceFolder | undefined;
-
-        if (typeof programOverride === "string" && programOverride.trim()) {
-          programUri = vscode.Uri.file(programOverride);
-        } else if (programOverride instanceof vscode.Uri) {
-          programUri = programOverride;
-        }
-
-        if (programUri) {
-          if (!(await isConfigurationFile(programUri))) {
-            vscode.window.showErrorMessage(
-              "Debugging requires a CONFIGURATION entry file."
-            );
-            return;
-          }
-        } else {
-          programUri = await ensureConfigurationEntryAuto();
-          if (!programUri) {
-            return;
-          }
+        if (!programUri) {
+          return false;
         }
 
         folder = vscode.workspace.getWorkspaceFolder(programUri);
@@ -1127,10 +1284,10 @@ export function registerDebugAdapter(
           vscode.window.showErrorMessage(
             "Configuration has errors. Fix them before starting a debug session."
           );
-          return;
+          return false;
         }
         if (!(await validateConfiguration(programUri))) {
-          return;
+          return false;
         }
 
         const program = programUri.fsPath;
@@ -1155,20 +1312,20 @@ export function registerDebugAdapter(
             `startDebugging still pending after 5s: active=${active?.name ?? "<none>"} type=${active?.type ?? "<none>"} config=${JSON.stringify(config)}`
           );
         }, 5000);
-        void vscode.debug.startDebugging(folder, config).then(
-          (started) => {
-            clearTimeout(pendingTimer);
-            debugChannel().appendLine(
-              `startDebugging result: ${started} folder=${folder?.name ?? "<none>"} config=${JSON.stringify(config)}`
-            );
-          },
-          (err: unknown) => {
-            clearTimeout(pendingTimer);
-            debugChannel().appendLine(
-              `startDebugging error: ${err instanceof Error ? err.message : String(err)} folder=${folder?.name ?? "<none>"} config=${JSON.stringify(config)}`
-            );
-          }
-        );
+        try {
+          const started = await vscode.debug.startDebugging(folder, config);
+          clearTimeout(pendingTimer);
+          debugChannel().appendLine(
+            `startDebugging result: ${started} folder=${folder?.name ?? "<none>"} config=${JSON.stringify(config)}`
+          );
+          return started;
+        } catch (err) {
+          clearTimeout(pendingTimer);
+          debugChannel().appendLine(
+            `startDebugging error: ${err instanceof Error ? err.message : String(err)} folder=${folder?.name ?? "<none>"} config=${JSON.stringify(config)}`
+          );
+          throw err;
+        }
       }
     )
   );
@@ -1180,7 +1337,7 @@ export function registerDebugAdapter(
         vscode.window.showErrorMessage(
           "Attach requires runtime.control.endpoint in runtime.toml."
         );
-        return;
+        return false;
       }
       const runtimeOptions = runtimeSourceOptions();
       const config: vscode.DebugConfiguration = {
@@ -1194,8 +1351,131 @@ export function registerDebugAdapter(
       if (folder) {
         config.cwd = folder.uri.fsPath;
       }
-      void vscode.debug.startDebugging(folder, config);
+      return vscode.debug.startDebugging(folder, config);
     })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("trust-lsp.debug.stop", async () => {
+      const session = structuredTextSession();
+      if (!session) {
+        return false;
+      }
+      return vscode.debug.stopDebugging(session);
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "trust-lsp.debug.io.write",
+      async (...args: unknown[]) => {
+        const { address, value } = normalizeIoCommandArgs(args);
+        if (!address) {
+          throw new Error("Missing I/O address.");
+        }
+        const session = structuredTextSession();
+        if (!session) {
+          throw new Error("No active Structured Text debug session.");
+        }
+        await session.customRequest("stIoWrite", {
+          address,
+          value: value ?? "FALSE",
+        });
+      }
+    )
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "trust-lsp.debug.io.force",
+      async (...args: unknown[]) => {
+        const { address, value } = normalizeIoCommandArgs(args);
+        if (!address) {
+          throw new Error("Missing I/O address.");
+        }
+        const session = structuredTextSession();
+        if (!session) {
+          throw new Error("No active Structured Text debug session.");
+        }
+        await session.customRequest("setExpression", {
+          expression: address,
+          value: `force: ${value ?? "FALSE"}`,
+        });
+      }
+    )
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "trust-lsp.debug.io.release",
+      async (...args: unknown[]) => {
+        const { address } = normalizeIoCommandArgs(args);
+        if (!address) {
+          throw new Error("Missing I/O address.");
+        }
+        const session = structuredTextSession();
+        if (!session) {
+          throw new Error("No active Structured Text debug session.");
+        }
+        await session.customRequest("setExpression", {
+          expression: address,
+          value: "release",
+        });
+      }
+    )
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "trust-lsp.debug.expr.write",
+      async (...args: unknown[]) => {
+        const { expression, value } = normalizeExpressionCommandArgs(args);
+        if (!expression) {
+          throw new Error("Missing expression.");
+        }
+        const session = structuredTextSession();
+        if (!session) {
+          throw new Error("No active Structured Text debug session.");
+        }
+        await session.customRequest("setExpression", {
+          expression,
+          value: value ?? "FALSE",
+        });
+      }
+    )
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "trust-lsp.debug.expr.force",
+      async (...args: unknown[]) => {
+        const { expression, value } = normalizeExpressionCommandArgs(args);
+        if (!expression) {
+          throw new Error("Missing expression.");
+        }
+        const session = structuredTextSession();
+        if (!session) {
+          throw new Error("No active Structured Text debug session.");
+        }
+        await session.customRequest("setExpression", {
+          expression,
+          value: `force: ${value ?? "FALSE"}`,
+        });
+      }
+    )
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "trust-lsp.debug.expr.release",
+      async (...args: unknown[]) => {
+        const { expression } = normalizeExpressionCommandArgs(args);
+        if (!expression) {
+          throw new Error("Missing expression.");
+        }
+        const session = structuredTextSession();
+        if (!session) {
+          throw new Error("No active Structured Text debug session.");
+        }
+        await session.customRequest("setExpression", {
+          expression,
+          value: "release",
+        });
+      }
+    )
   );
 
   context.subscriptions.push(

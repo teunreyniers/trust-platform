@@ -97,9 +97,48 @@ async function createDocument(
   return doc;
 }
 
+async function findSnippetCompletion(
+  doc: vscode.TextDocument,
+  prefix: string,
+  timeoutMs = 10000
+): Promise<vscode.CompletionItem | undefined> {
+  const position = new vscode.Position(0, prefix.length);
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const result = (await vscode.commands.executeCommand(
+      "vscode.executeCompletionItemProvider",
+      doc.uri,
+      position
+    )) as vscode.CompletionList | vscode.CompletionItem[] | undefined;
+
+    const item = completionItems(result).find((candidate) => {
+      if (completionLabel(candidate) !== prefix) {
+        return false;
+      }
+      return candidate.kind === vscode.CompletionItemKind.Snippet;
+    });
+
+    if (item) {
+      return item;
+    }
+
+    await delay(200);
+  }
+
+  return undefined;
+}
+
 suite("Snippet contributions (VS Code)", function () {
   this.timeout(30000);
   let fixturesRoot: vscode.Uri;
+  let previousSnippetSuggestions:
+    | "top"
+    | "bottom"
+    | "inline"
+    | "none"
+    | undefined;
+  let previousShowSnippets: boolean | undefined;
 
   suiteSetup(async () => {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -110,6 +149,24 @@ suite("Snippet contributions (VS Code)", function () {
       "vscode-snippets"
     );
     await vscode.workspace.fs.createDirectory(fixturesRoot);
+
+    const editorConfig = vscode.workspace.getConfiguration("editor");
+    previousSnippetSuggestions = editorConfig.get<
+      "top" | "bottom" | "inline" | "none" | undefined
+    >("snippetSuggestions");
+    previousShowSnippets = editorConfig.get<boolean | undefined>(
+      "suggest.showSnippets"
+    );
+    await editorConfig.update(
+      "snippetSuggestions",
+      "top",
+      vscode.ConfigurationTarget.Workspace
+    );
+    await editorConfig.update(
+      "suggest.showSnippets",
+      true,
+      vscode.ConfigurationTarget.Workspace
+    );
   });
 
   suiteTeardown(async () => {
@@ -121,6 +178,18 @@ suite("Snippet contributions (VS Code)", function () {
     } catch {
       // Ignore cleanup failures in test teardown.
     }
+
+    const editorConfig = vscode.workspace.getConfiguration("editor");
+    await editorConfig.update(
+      "snippetSuggestions",
+      previousSnippetSuggestions,
+      vscode.ConfigurationTarget.Workspace
+    );
+    await editorConfig.update(
+      "suggest.showSnippets",
+      previousShowSnippets,
+      vscode.ConfigurationTarget.Workspace
+    );
   });
 
   test("snippet JSON file is valid and includes required patterns", () => {
@@ -151,20 +220,7 @@ suite("Snippet contributions (VS Code)", function () {
   test("snippets appear in completion with documentation", async () => {
     for (const prefix of EXPECTED_PREFIXES) {
       const doc = await createDocument(fixturesRoot, `completion-${prefix}.st`, prefix);
-      const position = new vscode.Position(0, prefix.length);
-
-      const result = (await vscode.commands.executeCommand(
-        "vscode.executeCompletionItemProvider",
-        doc.uri,
-        position
-      )) as vscode.CompletionList | vscode.CompletionItem[] | undefined;
-
-      const item = completionItems(result).find((candidate) => {
-        if (completionLabel(candidate) !== prefix) {
-          return false;
-        }
-        return candidate.kind === vscode.CompletionItemKind.Snippet;
-      });
+      const item = await findSnippetCompletion(doc, prefix);
 
       assert.ok(item, `Expected snippet completion for '${prefix}'.`);
       const detail = item?.detail?.trim() ?? "";

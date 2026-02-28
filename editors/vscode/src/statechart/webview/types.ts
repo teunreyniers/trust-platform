@@ -1,4 +1,8 @@
 import { Node, Edge } from "@xyflow/react";
+import type {
+  RuntimeExtensionToWebviewMessage,
+  RuntimeWebviewToExtensionMessage,
+} from "../../visual/runtime/runtimeMessages";
 
 /**
  * State types for UML StateChart
@@ -100,9 +104,8 @@ export type WebviewToExtensionMessage =
   | { type: "save"; content: string }
   | { type: "ready" }
   | { type: "error"; error: string }
-  | { type: "startExecution"; mode: ExecutionMode }
-  | { type: "stopExecution" }
-  | { type: "sendEvent"; event: string };
+  | { type: "sendEvent"; event: string }
+  | RuntimeWebviewToExtensionMessage;
 
 /**
  * Messages sent from extension to webview
@@ -111,7 +114,8 @@ export type ExtensionToWebviewMessage =
   | { type: "update"; content: string }
   | { type: "init"; content: string }
   | { type: "executionState"; state: ExecutionState }
-  | { type: "executionStopped" };
+  | { type: "executionStopped" }
+  | RuntimeExtensionToWebviewMessage;
 
 /**
  * Real-time execution state from runtime

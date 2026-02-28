@@ -1,5 +1,10 @@
 import * as vscode from "vscode";
 import { asUri, pathExists } from "./uriUtils";
+import {
+  openCompanionForVisualSource,
+  openCompanionOnCreateEnabled,
+  syncVisualCompanionFromUri,
+} from "../visual/companionSt";
 
 type ImportBlocklyArgs = {
   sourceUri?: vscode.Uri | string;
@@ -117,8 +122,15 @@ export async function importBlocklyCommand(
       `Blockly program imported successfully: ${fileName}`
     );
 
-    // Open the imported file
-    await vscode.commands.executeCommand("vscode.open", targetFileUri);
+    const companionUri = await syncVisualCompanionFromUri(targetFileUri, {
+      force: true,
+      showErrors: true,
+    });
+    if (openCompanionOnCreateEnabled(targetFileUri) && companionUri) {
+      await openCompanionForVisualSource(targetFileUri);
+    } else {
+      await vscode.commands.executeCommand("vscode.open", targetFileUri);
+    }
 
     return targetFileUri;
   } catch (error) {

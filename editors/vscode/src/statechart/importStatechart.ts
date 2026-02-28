@@ -1,5 +1,10 @@
 import * as vscode from "vscode";
 import { asUri, pathExists } from "./uriUtils";
+import {
+  openCompanionForVisualSource,
+  openCompanionOnCreateEnabled,
+  syncVisualCompanionFromUri,
+} from "../visual/companionSt";
 
 type ImportStatechartArgs = {
   sourceUri?: vscode.Uri | string;
@@ -172,11 +177,15 @@ export function registerImportStatechartCommand(
         const openAfter = args?.openAfterImport ?? true;
         if (openAfter) {
           try {
-            await vscode.commands.executeCommand(
-              "vscode.openWith",
-              target,
-              "trust-lsp.statechartEditor"
-            );
+            const companionUri = await syncVisualCompanionFromUri(target, {
+              force: true,
+              showErrors: true,
+            });
+            if (openCompanionOnCreateEnabled(target) && companionUri) {
+              await openCompanionForVisualSource(target);
+            } else {
+              await vscode.commands.executeCommand("vscode.open", target);
+            }
           } catch (error) {
             void vscode.window.showErrorMessage(
               `Failed to open statechart: ${error instanceof Error ? error.message : String(error)}`

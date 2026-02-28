@@ -28,6 +28,8 @@ import {
 import { StateChartEditorProvider } from "./statechart/stateChartEditor";
 import { BlocklyEditorProvider } from "./blockly/blocklyEditor";
 import { LadderEditorProvider } from "./ladder/ladderEditor";
+import { registerVisualCompanionSync } from "./visual/companionSt";
+import { registerVisualCustomEditorAutoOpen } from "./visual/autoOpenCustomEditors";
 
 let client: LanguageClient | undefined;
 let showIecDiagnosticRefs = true;
@@ -180,13 +182,20 @@ function startClientWithRetry(
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-  registerDebugAdapter(context);
-  registerIoPanel(context);
-  registerHmiPanel(context);
-  registerLanguageModelTools(context, { getClient: () => client });
   context.subscriptions.push(StateChartEditorProvider.register(context));
   context.subscriptions.push(BlocklyEditorProvider.register(context));
   context.subscriptions.push(LadderEditorProvider.register(context));
+
+  registerDebugAdapter(context);
+  registerIoPanel(context);
+  registerHmiPanel(context);
+  try {
+    registerLanguageModelTools(context, { getClient: () => client });
+  } catch (error) {
+    console.error("Failed to register language model tools:", error);
+  }
+  context.subscriptions.push(registerVisualCustomEditorAutoOpen());
+  context.subscriptions.push(registerVisualCompanionSync());
   registerStTestIntegration(context);
   await seedDefaultRuntimeControlEndpoint(context);
   const config = vscode.workspace.getConfiguration("trust-lsp");

@@ -427,15 +427,23 @@ function applyFilter(entries) {
   });
 }
 
-function isBooleanValue(value) {
-  const normalized = String(value || "").trim().toUpperCase();
-  return normalized === "TRUE" || normalized === "FALSE";
-}
-
-function nextBooleanValue(value) {
-  return String(value || "").trim().toUpperCase() === "TRUE"
-    ? "FALSE"
-    : "TRUE";
+function parseBooleanValue(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const normalized = trimmed.toUpperCase();
+  const maybeWrapped =
+    normalized.startsWith("BOOL(") && normalized.endsWith(")")
+      ? normalized.slice(5, -1).trim()
+      : normalized;
+  if (maybeWrapped === "TRUE" || maybeWrapped === "1") {
+    return true;
+  }
+  if (maybeWrapped === "FALSE" || maybeWrapped === "0") {
+    return false;
+  }
+  return undefined;
 }
 
 function defaultNumericValue(value) {
@@ -452,6 +460,24 @@ function defaultNumericValue(value) {
     return match[1];
   }
   return "";
+}
+
+function defaultWriteValue(entry, display) {
+  const booleanValue = parseBooleanValue(entry.value || display.value);
+  if (booleanValue !== undefined) {
+    return booleanValue ? "FALSE" : "TRUE";
+  }
+  const numericValue = defaultNumericValue(display.value || entry.value);
+  if (numericValue) {
+    return numericValue;
+  }
+  if (
+    display.type === "BOOL" ||
+    /^%[IQM]X/i.test(String(entry.address || "").trim())
+  ) {
+    return "TRUE";
+  }
+  return "0";
 }
 
 function splitDisplayValue(value) {
@@ -540,15 +566,9 @@ function renderRows(entries, options = {}) {
       input.type = "text";
       const key = [entry.name || "", entry.address || ""].join("|");
       input.dataset.key = key;
-      if (isBooleanValue(entry.value)) {
-        input.value = editCache.has(key)
-          ? editCache.get(key)
-          : nextBooleanValue(entry.value);
-      } else {
-        input.value = editCache.has(key)
-          ? editCache.get(key)
-          : defaultNumericValue(entry.value);
-      }
+      input.value = editCache.has(key)
+        ? editCache.get(key)
+        : defaultWriteValue(entry, display);
       input.placeholder = entry.value || "";
       input.disabled = !(canWrite || canForce);
       input.addEventListener("input", () => {

@@ -211,6 +211,44 @@ export class RuntimeClient {
   }
 
   /**
+   * Force value on an I/O address until explicitly released.
+   */
+  async forceIo(address: string, value: any): Promise<void> {
+    if (!this.socket) {
+      throw new Error("Not connected to runtime");
+    }
+
+    const id = this.requestId++;
+    const request: ControlRequest = {
+      id,
+      type: "io.force",
+      auth: this.authToken,
+      params: { address, value },
+    };
+
+    await this.sendRequest(request);
+  }
+
+  /**
+   * Release forced value on an I/O address.
+   */
+  async unforceIo(address: string): Promise<void> {
+    if (!this.socket) {
+      throw new Error("Not connected to runtime");
+    }
+
+    const id = this.requestId++;
+    const request: ControlRequest = {
+      id,
+      type: "io.unforce",
+      auth: this.authToken,
+      params: { address },
+    };
+
+    await this.sendRequest(request);
+  }
+
+  /**
    * Resume runtime execution (ensure it's running PLC cycles)
    */
   async resume(): Promise<void> {

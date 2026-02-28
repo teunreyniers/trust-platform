@@ -1,7 +1,12 @@
-# IEC 61131-3 Structured Text Specifications
+# IEC 61131-3 Specifications
 
-This directory contains IEC 61131-3 Structured Text (ST) specification extracts (01-09)
-and the consolidated platform/runtime/tooling spec (10-runtime).
+This directory contains IEC 61131-3 Structured Text (ST) specification extracts (01-09),
+the consolidated platform/runtime/tooling spec (10-runtime), and Ladder Diagram (LD)
+specification documents split into:
+
+- normative LD language semantics (`11-ladder-diagram`)
+- truST LD implementation profile (`12-ladder-profile-trust`)
+- visual-editor runtime unification contract (`13-visual-editors-runtime-unification`)
 
 ## Document Index
 
@@ -17,6 +22,9 @@ and the consolidated platform/runtime/tooling spec (10-runtime).
 | [08-standard-function-blocks.md](08-standard-function-blocks.md) | Bistable, edge detection, counter, timer FBs | trust-hir |
 | [09-semantic-rules.md](09-semantic-rules.md) | Scope rules, error conditions, OOP rules | trust-hir |
 | [10-runtime.md](10-runtime.md) | Runtime interpreter + bytecode + debugger + LSP/IDE tooling spec | trust-runtime, trust-debug, trust-lsp |
+| [11-ladder-diagram.md](11-ladder-diagram.md) | Normative IEC-aligned LD language semantics and conformance rules | trust-runtime, trust-lsp, editors/vscode |
+| [12-ladder-profile-trust.md](12-ladder-profile-trust.md) | truST LD schema/runtime/editor profile and interoperability constraints | trust-runtime, trust-lsp, editors/vscode |
+| [13-visual-editors-runtime-unification.md](13-visual-editors-runtime-unification.md) | Shared ST-backed runtime/debug command path for Ladder/Statechart/Blockly | editors/vscode, trust-debug, trust-runtime |
 
 ## Standard Reference
 
@@ -37,11 +45,13 @@ These specifications are based on:
 - Standard functions and function blocks
 - Semantic and error rules
 - Runtime, debugger, and tooling integration (see `10-runtime.md`)
+- Ladder Diagram (LD) normative semantics (see `11-ladder-diagram.md`)
+- Ladder Diagram (LD) implementation profile and interop constraints (see `12-ladder-profile-trust.md`)
+- Visual editor runtime/debug ST-path unification contract (see `13-visual-editors-runtime-unification.md`)
 
 ### Not Covered (Out of Scope)
 
 - Instruction List (IL) - Deprecated in Edition 3
-- Ladder Diagram (LD) - Graphical language
 - Function Block Diagram (FBD) - Graphical language
 - Sequential Function Chart (SFC) - Partially relevant, not ST-specific
 - Configuration and resource management details
@@ -55,6 +65,7 @@ notes, start with `docs/specs/10-runtime.md`.
 For IEC coverage tracking and spec-to-test mapping, see:
 - `docs/specs/coverage/standard-functions-coverage.md`
 - `docs/specs/coverage/iec-table-test-map.toml`
+- `docs/specs/coverage/ld-coverage.md`
 
 ### For Lexer Development (trust-syntax)
 
@@ -109,6 +120,7 @@ Key tables from the IEC 61131-3 standard referenced in these documents:
 | Table 44 | Edge detection FBs | 08-standard-function-blocks.md |
 | Table 45 | Counter FBs | 08-standard-function-blocks.md |
 | Table 46 | Timer FBs | 08-standard-function-blocks.md |
+| Section 8.2 | Ladder Diagram (LD) semantics | 11-ladder-diagram.md |
 | Table 47 | PROGRAM declaration | 04-pou-declarations.md |
 | Table 48 | CLASS declaration | 04-pou-declarations.md |
 | Table 51 | INTERFACE declaration | 04-pou-declarations.md |

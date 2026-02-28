@@ -22,6 +22,16 @@ export function getBinaryPath(
     return resolveConfiguredPath(configuredRaw);
   }
 
+  const isDevMode = context.extensionMode === vscode.ExtensionMode.Development;
+  if (isDevMode) {
+    const devBinary = getDevelopmentBinaryPath(context, binaryName);
+    if (devBinary && fs.existsSync(devBinary)) {
+      return devBinary;
+    }
+    // In extension development prefer PATH over stale bundled binaries.
+    return binaryName;
+  }
+
   // 2. Look for bundled binary in extension
   const bundledPath = getBundledBinaryPath(context, binaryName);
   if (bundledPath && fs.existsSync(bundledPath)) {
@@ -70,4 +80,31 @@ function resolveConfiguredPath(value: string): string {
   }
 
   return normalized;
+}
+
+function getDevelopmentBinaryPath(
+  context: vscode.ExtensionContext,
+  binaryName: string
+): string | undefined {
+  const suffix = process.platform === "win32" ? ".exe" : "";
+  const repoRoot = path.resolve(context.extensionPath, "..", "..");
+  const debugCandidate = path.join(
+    repoRoot,
+    "target",
+    "debug",
+    `${binaryName}${suffix}`
+  );
+  if (fs.existsSync(debugCandidate)) {
+    return debugCandidate;
+  }
+  const releaseCandidate = path.join(
+    repoRoot,
+    "target",
+    "release",
+    `${binaryName}${suffix}`
+  );
+  if (fs.existsSync(releaseCandidate)) {
+    return releaseCandidate;
+  }
+  return undefined;
 }

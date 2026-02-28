@@ -226,6 +226,11 @@ export function registerIoPanel(context: vscode.ExtensionContext): void {
       showPanel(context);
     })
   );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("trust-lsp.debug.openIoPanelSettings", () => {
+      showPanel(context, { openSettings: true });
+    })
+  );
 
   const activeSession = vscode.debug.activeDebugSession;
   if (activeSession && activeSession.type === DEBUG_TYPE) {
@@ -302,11 +307,21 @@ export function registerIoPanel(context: vscode.ExtensionContext): void {
 
 }
 
-function showPanel(context: vscode.ExtensionContext): void {
+type ShowPanelOptions = {
+  openSettings?: boolean;
+};
+
+function showPanel(
+  context: vscode.ExtensionContext,
+  options: ShowPanelOptions = {}
+): void {
   if (panel) {
     panel.reveal();
     void requestIoState();
     void sendRuntimeStatus();
+    if (options.openSettings) {
+      panel.webview.postMessage({ type: "openSettings" });
+    }
     return;
   }
 
@@ -333,6 +348,9 @@ function showPanel(context: vscode.ExtensionContext): void {
 
   void requestIoState();
   void sendRuntimeStatus();
+  if (options.openSettings) {
+    panel.webview.postMessage({ type: "openSettings" });
+  }
 
   context.subscriptions.push(panel);
 }
@@ -586,14 +604,6 @@ async function requestIoState(): Promise<void> {
 }
 
 async function writeInput(address: string, value: string): Promise<void> {
-  const session = getStructuredTextSession();
-  if (!session) {
-    panel?.webview.postMessage({
-      type: "status",
-      payload: "No active Structured Text debug session.",
-    });
-    return;
-  }
   if (!address) {
     panel?.webview.postMessage({
       type: "status",
@@ -603,7 +613,10 @@ async function writeInput(address: string, value: string): Promise<void> {
   }
 
   try {
-    await session.customRequest("stIoWrite", { address, value });
+    await vscode.commands.executeCommand("trust-lsp.debug.io.write", {
+      address,
+      value,
+    });
     panel?.webview.postMessage({
       type: "status",
       payload: `I/O write queued for ${address}.`,
@@ -618,14 +631,6 @@ async function writeInput(address: string, value: string): Promise<void> {
 }
 
 async function forceInput(address: string, value: string): Promise<void> {
-  const session = getStructuredTextSession();
-  if (!session) {
-    panel?.webview.postMessage({
-      type: "status",
-      payload: "No active Structured Text debug session.",
-    });
-    return;
-  }
   if (!address) {
     panel?.webview.postMessage({
       type: "status",
@@ -635,9 +640,9 @@ async function forceInput(address: string, value: string): Promise<void> {
   }
 
   try {
-    await session.customRequest("setExpression", {
-      expression: address,
-      value: `force: ${value}`,
+    await vscode.commands.executeCommand("trust-lsp.debug.io.force", {
+      address,
+      value,
     });
     panel?.webview.postMessage({
       type: "status",
@@ -653,14 +658,6 @@ async function forceInput(address: string, value: string): Promise<void> {
 }
 
 async function releaseInput(address: string): Promise<void> {
-  const session = getStructuredTextSession();
-  if (!session) {
-    panel?.webview.postMessage({
-      type: "status",
-      payload: "No active Structured Text debug session.",
-    });
-    return;
-  }
   if (!address) {
     panel?.webview.postMessage({
       type: "status",
@@ -670,9 +667,8 @@ async function releaseInput(address: string): Promise<void> {
   }
 
   try {
-    await session.customRequest("setExpression", {
-      expression: address,
-      value: "release",
+    await vscode.commands.executeCommand("trust-lsp.debug.io.release", {
+      address,
     });
     panel?.webview.postMessage({
       type: "status",
@@ -689,16 +685,16 @@ async function releaseInput(address: string): Promise<void> {
 
 
 async function stopDebugging(): Promise<void> {
-  const session = getStructuredTextSession();
-  if (!session) {
-    panel?.webview.postMessage({
-      type: "status",
-      payload: "No active Structured Text debug session.",
-    });
-    return;
-  }
   try {
-    await vscode.debug.stopDebugging(session);
+    const stopped = await vscode.commands.executeCommand<boolean>(
+      "trust-lsp.debug.stop"
+    );
+    if (!stopped) {
+      panel?.webview.postMessage({
+        type: "status",
+        payload: "No active Structured Text debug session.",
+      });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     panel?.webview.postMessage({
@@ -710,10 +706,16 @@ async function stopDebugging(): Promise<void> {
 
 async function startDebugging(programOverride?: string): Promise<void> {
   try {
-    await vscode.commands.executeCommand(
+    const started = await vscode.commands.executeCommand<boolean>(
       "trust-lsp.debug.start",
       programOverride
     );
+    if (!started) {
+      panel?.webview.postMessage({
+        type: "status",
+        payload: "Start debugging did not launch a session.",
+      });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     panel?.webview.postMessage({

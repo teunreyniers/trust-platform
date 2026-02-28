@@ -243,6 +243,67 @@ fn dispatch_io_state_emits_event() {
 }
 
 #[test]
+fn dispatch_io_state_refreshes_outputs_from_runtime_snapshot() {
+    let mut runtime = Runtime::new();
+    let output_addr = IoAddress::parse("%QX0.1").unwrap();
+    runtime.io_mut().bind("AlarmLamp", output_addr.clone());
+    runtime
+        .io_mut()
+        .write(&output_addr, RuntimeValue::Bool(false))
+        .unwrap();
+
+    let session = DebugSession::new(runtime);
+    let mut adapter = DebugAdapter::new(session);
+
+    let request = Request::<serde_json::Value> {
+        seq: 1,
+        message_type: MessageType::Request,
+        command: "stIoState".to_string(),
+        arguments: None,
+    };
+
+    // Prime the adapter cache with FALSE.
+    let first = adapter.dispatch_request(request);
+    let first_event: Event<IoStateEventBody> =
+        serde_json::from_value(first.events[0].clone()).unwrap();
+    let first_output = first_event
+        .body
+        .unwrap()
+        .outputs
+        .into_iter()
+        .find(|entry| entry.address == "%QX0.1")
+        .unwrap();
+    assert_eq!(first_output.value, "FALSE");
+
+    // Change runtime output out-of-band; next stIoState must reflect TRUE.
+    adapter
+        .session()
+        .runtime_handle()
+        .lock()
+        .unwrap()
+        .io_mut()
+        .write(&output_addr, RuntimeValue::Bool(true))
+        .unwrap();
+
+    let second = adapter.dispatch_request(Request::<serde_json::Value> {
+        seq: 2,
+        message_type: MessageType::Request,
+        command: "stIoState".to_string(),
+        arguments: None,
+    });
+    let second_event: Event<IoStateEventBody> =
+        serde_json::from_value(second.events[0].clone()).unwrap();
+    let second_output = second_event
+        .body
+        .unwrap()
+        .outputs
+        .into_iter()
+        .find(|entry| entry.address == "%QX0.1")
+        .unwrap();
+    assert_eq!(second_output.value, "TRUE");
+}
+
+#[test]
 fn dispatch_io_write_updates_input() {
     let mut runtime = Runtime::new();
     let input_addr = IoAddress::parse("%IX0.2").unwrap();
@@ -388,6 +449,198 @@ fn dispatch_set_expression_force_supports_output_and_memory_io() {
     assert_eq!(
         runtime.io().read(&memory_addr).unwrap(),
         RuntimeValue::Bool(true)
+    );
+}
+
+#[test]
+fn dispatch_set_expression_force_supports_instance_field_targets() {
+    let mut runtime = Runtime::new();
+    let instance_id = runtime
+        .storage_mut()
+        .create_instance("FB_simple_start_stop_LADDER");
+    runtime
+        .storage_mut()
+        .set_instance_var(instance_id, "dfg", RuntimeValue::Bool(false));
+    runtime
+        .storage_mut()
+        .set_global("fb_simple_start_stop", RuntimeValue::Instance(instance_id));
+
+    let session = DebugSession::new(runtime);
+    let mut adapter = DebugAdapter::new(session);
+
+    let force_request = Request {
+        seq: 1,
+        message_type: MessageType::Request,
+        command: "setExpression".to_string(),
+        arguments: Some(
+            serde_json::to_value(SetExpressionArguments {
+                expression: "fb_simple_start_stop.dfg".to_string(),
+                value: "force: TRUE".to_string(),
+                frame_id: None,
+            })
+            .unwrap(),
+        ),
+    };
+    let force_outcome = adapter.dispatch_request(force_request);
+    assert_eq!(force_outcome.responses.len(), 1);
+    let force_response: Response<SetExpressionResponseBody> =
+        serde_json::from_value(force_outcome.responses[0].clone()).unwrap();
+    assert!(
+        force_response.success,
+        "force instance field failed: {:?}",
+        force_response.message
+    );
+    let runtime = adapter.session().runtime_handle();
+    assert_eq!(
+        runtime
+            .lock()
+            .unwrap()
+            .storage()
+            .get_instance_var(instance_id, "dfg")
+            .cloned(),
+        Some(RuntimeValue::Bool(true))
+    );
+
+    let release_request = Request {
+        seq: 2,
+        message_type: MessageType::Request,
+        command: "setExpression".to_string(),
+        arguments: Some(
+            serde_json::to_value(SetExpressionArguments {
+                expression: "fb_simple_start_stop.dfg".to_string(),
+                value: "release".to_string(),
+                frame_id: None,
+            })
+            .unwrap(),
+        ),
+    };
+    let release_outcome = adapter.dispatch_request(release_request);
+    assert_eq!(release_outcome.responses.len(), 1);
+    let release_response: Response<SetExpressionResponseBody> =
+        serde_json::from_value(release_outcome.responses[0].clone()).unwrap();
+    assert!(
+        release_response.success,
+        "release instance field failed: {:?}",
+        release_response.message
+    );
+
+    let write_request = Request {
+        seq: 3,
+        message_type: MessageType::Request,
+        command: "setExpression".to_string(),
+        arguments: Some(
+            serde_json::to_value(SetExpressionArguments {
+                expression: "fb_simple_start_stop.dfg".to_string(),
+                value: "FALSE".to_string(),
+                frame_id: None,
+            })
+            .unwrap(),
+        ),
+    };
+    let write_outcome = adapter.dispatch_request(write_request);
+    assert_eq!(write_outcome.responses.len(), 1);
+    let write_response: Response<SetExpressionResponseBody> =
+        serde_json::from_value(write_outcome.responses[0].clone()).unwrap();
+    assert!(
+        write_response.success,
+        "write instance field failed: {:?}",
+        write_response.message
+    );
+    let runtime = adapter.session().runtime_handle();
+    assert_eq!(
+        runtime
+            .lock()
+            .unwrap()
+            .storage()
+            .get_instance_var(instance_id, "dfg")
+            .cloned(),
+        Some(RuntimeValue::Bool(false))
+    );
+}
+
+#[test]
+fn dispatch_set_expression_force_supports_instance_field_targets_with_snapshot() {
+    let mut runtime = Runtime::new();
+    let instance_id = runtime
+        .storage_mut()
+        .create_instance("FB_simple_start_stop_LADDER");
+    runtime
+        .storage_mut()
+        .set_instance_var(instance_id, "dfg", RuntimeValue::Bool(false));
+    runtime
+        .storage_mut()
+        .set_global("fb_simple_start_stop", RuntimeValue::Instance(instance_id));
+
+    let session = DebugSession::new(runtime);
+    let control = session.debug_control();
+    {
+        let runtime_handle = session.runtime_handle();
+        let mut runtime = runtime_handle.lock().unwrap();
+        runtime
+            .with_eval_context(None, None, |ctx| {
+                control.refresh_snapshot(ctx);
+                Ok(())
+            })
+            .unwrap();
+    }
+    let mut adapter = DebugAdapter::new(session);
+
+    let force_request = Request {
+        seq: 1,
+        message_type: MessageType::Request,
+        command: "setExpression".to_string(),
+        arguments: Some(
+            serde_json::to_value(SetExpressionArguments {
+                expression: "fb_simple_start_stop.dfg".to_string(),
+                value: "force: TRUE".to_string(),
+                frame_id: None,
+            })
+            .unwrap(),
+        ),
+    };
+    let force_outcome = adapter.dispatch_request(force_request);
+    assert_eq!(force_outcome.responses.len(), 1);
+    let force_response: Response<SetExpressionResponseBody> =
+        serde_json::from_value(force_outcome.responses[0].clone()).unwrap();
+    assert!(
+        force_response.success,
+        "force instance field (snapshot) failed: {:?}",
+        force_response.message
+    );
+
+    let snapshot_value = adapter
+        .session()
+        .debug_control()
+        .with_snapshot(|snapshot| {
+            snapshot
+                .storage
+                .get_instance_var(instance_id, "dfg")
+                .cloned()
+        })
+        .flatten();
+    assert_eq!(snapshot_value, Some(RuntimeValue::Bool(true)));
+
+    let release_request = Request {
+        seq: 2,
+        message_type: MessageType::Request,
+        command: "setExpression".to_string(),
+        arguments: Some(
+            serde_json::to_value(SetExpressionArguments {
+                expression: "fb_simple_start_stop.dfg".to_string(),
+                value: "release".to_string(),
+                frame_id: None,
+            })
+            .unwrap(),
+        ),
+    };
+    let release_outcome = adapter.dispatch_request(release_request);
+    assert_eq!(release_outcome.responses.len(), 1);
+    let release_response: Response<SetExpressionResponseBody> =
+        serde_json::from_value(release_outcome.responses[0].clone()).unwrap();
+    assert!(
+        release_response.success,
+        "release instance field (snapshot) failed: {:?}",
+        release_response.message
     );
 }
 

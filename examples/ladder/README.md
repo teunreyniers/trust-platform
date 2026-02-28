@@ -1,189 +1,79 @@
-# Ladder Logic Editor
+# Ladder Logic Examples
 
-✅ **Functional** - Ladder Logic editor with execution engine
+This folder contains Ladder Diagram (LD) examples for the VS Code Ladder editor and the
+generated ST companion workflow.
 
-## Overview
+IEC-aligned LD specification references:
 
-Visual Ladder Logic editor for IEC 61131-3 ladder programming within VS Code. Supports both **simulation** and **hardware execution**.
+- Normative LD language spec: `docs/specs/11-ladder-diagram.md`
+- truST LD implementation profile: `docs/specs/12-ladder-profile-trust.md`
 
-## Features
+## Files
 
-- ✅ Canvas-based editor using **Konva.js** (vanilla)
-- ✅ Drag & drop with snap-to-grid (20px)
-- ✅ Zoom with mouse wheel (30%-300%)
-- ✅ Ladder elements:
-  - Contact (NO/NC - Normally Open/Closed)
-  - Coil (NORMAL/SET/RESET/NEGATED)
-- ✅ **Ladder execution engine** with PLC-style scan cycle
-- ✅ **Simulation mode** - In-memory execution
-- ✅ **Hardware mode** - Real I/O via RuntimeClient
-- ✅ Visual feedback - Active elements highlighted during execution
-- ✅ Rung management (add/remove)
-- ✅ Power rails rendering
+- `simple-start-stop.ladder.json`: Basic two-rung start/stop example.
+- `ethercat-snake.ladder.json`: LED chase pattern using multiple outputs.
+
+Both examples use LD schema v2 (`schemaVersion: 2`).
+`simple-start-stop.ladder.json` demonstrates symbolic node operands mapped to declared
+global variables (`scope: "global"`), with an additional local declaration example.
+
+## Open an Example in the Ladder Editor
+
+From repository root:
+
+```bash
+code --new-window --extensionDevelopmentPath=editors/vscode . examples/ladder/simple-start-stop.ladder.json
+```
+
+If VS Code opens text view, use `Reopen Editor With...` and select `Ladder Logic Editor`.
+
+## Right Pane Workflow (Current UI)
+
+The Ladder editor uses a right-side pane with three views:
+
+- `I/O` (default): ST-style runtime controls and runtime tree.
+- `Settings`: ST runtime settings view.
+- `Tools`: Ladder element/rung/edit operations (contact, coil, timer, counter, compare, math, rung add/remove, undo/redo, copy/paste, replace, auto-route, save).
+
+Runtime controls in `I/O`/`Settings` match ST panel behavior:
+
+- Mode toggle: `Local` / `External`
+- Start/Stop button
+- Runtime status text/pill
+- Filtered I/O tree and force/write/release actions
+
+Symbolic runtime control notes:
+
+- Input force/write supports declared symbols as well as direct `%IX*` addresses.
+- When local and global variables share the same name, use scoped references
+  (`LOCAL::Name` / `GLOBAL::Name`) to disambiguate.
 
 ## Execution Modes
 
-### Simulation Mode (Default)
-- Runs entirely in VS Code
-- No hardware required
-- 100ms scan cycle
-- Internal memory simulation
-- Perfect for development and testing
+### Local
 
-### Hardware Mode
-- Requires `examples/hardware_8do` backend running
-- Controls real hardware (EtherCAT EL2008 or GPIO)
-- Connects via Unix socket `/tmp/trust-debug.sock`
-- Live I/O visualization
+- In-extension simulation.
+- No external runtime endpoint required.
 
-## Hardware Execution
+### External
 
-To run ladder programs on real hardware:
+- Connects to runtime endpoint (for example `/tmp/trust-debug.sock`).
+- Useful for real hardware backends like `examples/hardware_8do`.
 
-1. **Start the hardware backend**:
-   ```bash
-   cd examples/hardware_8do
-   sudo ./start.sh
-   ```
+## Hardware Run (External Mode)
 
-2. **Open your ladder program** in VS Code:
-   ```bash
-   code examples/ladder/ethercat-snake.ladder.json
-   ```
+1. Start hardware backend:
 
-3. **Click "Run Hardware"** in the toolbar
-
-See [hardware_8do README](../hardware_8do/README.md) for hardware setup.
-
-## Architecture
-
-```
-editors/vscode/src/ladder/
-├── ladderEngine.types.ts    # Type definitions
-├── ladderEngine.ts          # Execution engine (PLC scan cycle)
-├── ladderEditor.ts          # VS Code provider
-├── webview/
-│   ├── LadderEditor.tsx     # Main canvas component (Konva)
-│   ├── Toolbar.tsx          # Tools & controls
-│   ├── main.tsx             # Entry point
-│   └── styles.css           # Styling
-```
-
-## Example Programs
-
-### Simulation Examples
-- `simple-start-stop.ladder.json` - Basic 2-rung start/stop logic
-- `ethercat-snake.ladder.json` - **Knight Rider effect** - 8 LEDs chase pattern using SET/RESET coils
-
-### Hardware Execution
-
-To run ladder programs on **real hardware** (Beckhoff EL2008 or Raspberry Pi GPIO):
-
-1. **Start the hardware backend:**
 ```bash
 cd examples/hardware_8do
 sudo ./start.sh
 ```
-This starts trust-runtime with EtherCAT/GPIO drivers and exposes `/tmp/trust-debug.sock`
 
-2. **Open your ladder program** in VS Code:
-```bash
-code examples/ladder/ethercat-snake.ladder.json
-```
+2. Open a ladder example in the Ladder editor.
+3. In right pane `I/O`, switch to `External`, then click `Start`.
 
-3. **Click "Run Hardware"** button in the toolbar
-   - Ladder editor connects to `/tmp/trust-debug.sock`
-   - Every scan cycle (100ms) sends I/O writes to hardware
-   - Watch your LEDs light up in sequence!
+## Notes
 
-See [hardware_8do/README.md](../hardware_8do/README.md) for hardware setup details.
-
-## Ladder Interpreter
-
-The ladder engine implements a traditional PLC scan cycle:
-
-1. **Read Inputs** - From hardware (EtherCAT/GPIO) or simulation
-2. **Evaluate Rungs** - Top to bottom, left to right
-3. **Write Outputs** - To hardware or simulation memory
-
-**Memory Areas:**
-- `%IX` - Digital inputs  
-- `%QX` - Digital outputs
-- `%MX` - Internal markers (flags)
-- `%MW` - Memory words (integers)
-
-**Scan cycle:** 100ms (configurable)
-
-## Tech Stack
-
-- **Konva.js** 9.3.6 - Canvas rendering (vanilla, no react-konva)
-- **React** 19.2.4 - UI framework
-- **TypeScript** 5.0 - Type safety
-- **esbuild** - Fast bundling (IIFE format for VS Code webviews)
-
-## Building
-
-```bash
-cd editors/vscode
-npm install
-npm run build:ladder
-```
-
-Output: `media/ladderWebview.js` (386KB IIFE bundle)
-
-## Roadmap
-
-### Phase 1: Core Editor ✅ COMPLETED
-- [x] Canvas rendering with Konva
-- [x] Contact & Coil elements
-- [x] Drag & drop with snap-to-grid
-- [x] Zoom and pan
-- [x] Large scrollable canvas
-- [ ] Element connections visualization (wires)
-- [ ] Element properties panel
-- [ ] Delete/edit elements
-
-### Phase 2: Execution ✅ COMPLETED
-- [x] Ladder interpreter with PLC scan cycle
-- [x] Contact evaluation (NO/NC)
-- [x] Coil execution (NORMAL/SET/RESET/NEGATED)
-- [x] RuntimeClient integration
-- [x] Hardware execution via `hardware_8do` backend
-- [x] Real-time element highlighting
-
-### Phase 3: More Elements
-- [ ] Timer blocks (TON/TOF/TP)
-- [ ] Counter blocks (CTU/CTD/CTUD)
-- [ ] Comparison blocks (GT/LT/EQ)
-- [ ] Math blocks (ADD/SUB/MUL/DIV)
-- [ ] Parallel branches
-- [ ] Series connections
-
-### Phase 4: Professional Features
-- [ ] Auto-routing connections
-- [ ] Undo/redo
-- [ ] Copy/paste rungs
-- [ ] Search/revanilla over react-konva?**
-- React 19 compatibility issues with react-konva
-- Direct Konva API gives more control
-- Smaller bundle size (386KB)
-- Better performance
-
-**Why Fabric.js not chosen?**
-- Konva has better TypeScript support
-- More active development
-- Cleaner event handling
-
-**Why interpreted execution instead of ST generation?**
-- Same pattern as Statechart/Blockly editors
-- Real-time execution visibility
-- Simpler debugging
-- Direct hardware control via RuntimeClient
-
-## Contributing
-
-This is a prototype. Feedback welcome!
-
-## License
-
-MIT OR Apache-2.0 (same as main project)
+- Saving a `.ladder.json` updates deterministic ST companion output (`<name>.st`) used by
+  ST-first runtime/project workflows.
+- Custom editor registration is optional; text editing of `.ladder.json` remains available.

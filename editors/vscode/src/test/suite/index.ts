@@ -14,7 +14,17 @@ export function run(): Promise<void> {
   require("./new-project.test");
   require("./plcopen-export.test");
   require("./plcopen-import.test");
+  require("./plcopen-ld-interop.test");
   require("./blockly-engine.test");
+  require("./ladder-engine.test");
+  require("./ladder-schema.test");
+  require("./ladder-editor-ops.test");
+  require("./ladder-runtime-io-panel.test");
+  require("./visual-companion.test");
+  require("./visual-runtime-controller.test");
+  require("./visual-runtime-panel-bridge.test");
+  require("./visual-right-pane-resize.test");
+  require("./visual-webview-vscode-api.test");
   require("./statechart-editor.lifecycle.test");
   require("./statechart-engine.test");
   require("./statechart-runtime-client.test");

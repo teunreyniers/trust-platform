@@ -70,7 +70,9 @@ impl DebugAdapter {
                 }
             }
         }
-        let body = self.build_io_state();
+        let body = self
+            .capture_io_state_from_runtime()
+            .unwrap_or_else(|| self.build_io_state());
         let event = self.event("stIoState", Some(body));
         DispatchOutcome {
             responses: vec![self.ok_response::<Value>(&request, None)],

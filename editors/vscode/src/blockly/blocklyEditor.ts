@@ -3,6 +3,34 @@ import * as path from "path";
 import { BlocklyEngine, BlocklyWorkspace } from "./blocklyEngine";
 import { BlocklyInterpreter } from "./blocklyInterpreter";
 import { RuntimeClient, getRuntimeConfig } from "./runtimeClient";
+import { RuntimeController } from "../visual/runtime/runtimeController";
+import {
+  isRuntimeWebviewMessage,
+  runtimeMessage,
+  type RuntimeWebviewToExtensionMessage,
+} from "../visual/runtime/runtimeMessages";
+import {
+  persistRuntimeUiMode,
+  runtimeUiModeFromConfig,
+} from "../visual/runtime/runtimeModeConfig";
+import {
+  applyRuntimePanelSettings,
+  boolToDisplay,
+  collectRuntimePanelSettings,
+  isRuntimePanelWebviewMessage,
+  runtimePanelModeToUi,
+  runtimePanelStatusFromState,
+  type RuntimePanelIoEntry,
+  type RuntimePanelIoState,
+  type RuntimePanelWebviewMessage,
+} from "../visual/runtime/runtimePanelBridge";
+import {
+  forceVisualRuntimeIo,
+  releaseVisualRuntimeIo,
+  startVisualRuntime,
+  stopVisualRuntime,
+  writeVisualRuntimeIo,
+} from "../visual/runtime/stRuntimeCommands";
 
 type ExecutionMode = "simulation" | "hardware";
 
@@ -12,6 +40,86 @@ interface ExecutionState {
   interpreter?: BlocklyInterpreter;
   mode: ExecutionMode;
   runtimeClient?: RuntimeClient;
+}
+
+const IO_ADDRESS_PATTERN = /%[IQM][XWDLB]\d+(?:\.\d+)?/gi;
+
+function parseRuntimeLiteral(value: string): boolean | number | string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const boolSource =
+    trimmed.startsWith("BOOL(") && trimmed.endsWith(")")
+      ? trimmed.slice(5, -1).trim()
+      : trimmed;
+  const upperBool = boolSource.toUpperCase();
+  if (upperBool === "TRUE" || upperBool === "1") {
+    return true;
+  }
+  if (upperBool === "FALSE" || upperBool === "0") {
+    return false;
+  }
+
+  const wrapperMatch = trimmed.match(/^[A-Za-z_][A-Za-z0-9_]*\((.*)\)$/);
+  const numericSource = wrapperMatch ? wrapperMatch[1].trim() : trimmed;
+  if (/^-?\d+(?:\.\d+)?$/.test(numericSource)) {
+    return Number(numericSource);
+  }
+
+  return trimmed;
+}
+
+function isBitAddress(address: string): boolean {
+  return /^%[IQM]X/i.test(address);
+}
+
+function classifyAddress(
+  address: string
+): "inputs" | "outputs" | "memory" | undefined {
+  if (/^%IX/i.test(address)) {
+    return "inputs";
+  }
+  if (/^%Q/i.test(address)) {
+    return "outputs";
+  }
+  if (/^%M/i.test(address)) {
+    return "memory";
+  }
+  return undefined;
+}
+
+function formatDisplayValue(address: string, value: unknown): string {
+  if (isBitAddress(address)) {
+    if (typeof value === "boolean") {
+      return boolToDisplay(value);
+    }
+    if (typeof value === "number") {
+      return boolToDisplay(value !== 0);
+    }
+    if (typeof value === "string") {
+      const upper = value.trim().toUpperCase();
+      if (upper === "TRUE" || upper === "1") {
+        return boolToDisplay(true);
+      }
+      if (upper === "FALSE" || upper === "0") {
+        return boolToDisplay(false);
+      }
+    }
+    return boolToDisplay(false);
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return `INT(${value})`;
+  }
+  if (typeof value === "boolean") {
+    return boolToDisplay(value);
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  return "INT(0)";
 }
 
 const WEBVIEW_HTML_TEMPLATE = `<!DOCTYPE html>
@@ -67,6 +175,12 @@ const WEBVIEW_HTML_TEMPLATE = `<!DOCTYPE html>
 export class BlocklyEditorProvider implements vscode.CustomTextEditorProvider {
   private static readonly viewType = "trust-lsp.blockly.editor";
   private activeExecutions = new Map<string, ExecutionState>();
+  private runtimeIoState = new Map<string, RuntimePanelIoState>();
+  private readonly runtimeController = new RuntimeController({
+    openPanel: () => vscode.commands.executeCommand("trust-lsp.debug.openIoPanel"),
+    openSettings: () =>
+      vscode.commands.executeCommand("trust-lsp.debug.openIoPanelSettings"),
+  });
 
   public static register(context: vscode.ExtensionContext): vscode.Disposable {
     const provider = new BlocklyEditorProvider(context);
@@ -117,60 +231,392 @@ export class BlocklyEditorProvider implements vscode.CustomTextEditorProvider {
       (e) => {
         if (e.document.uri.toString() === document.uri.toString()) {
           updateWebview();
+          this.runtimeIoState.set(docId, this.buildIoStateFromDocument(document));
+          this.postRuntimePanelIoState(docId, document, webviewPanel);
         }
       }
     );
 
     // Handle messages from webview
-    const messageSubscription = webviewPanel.webview.onDidReceiveMessage((message) => {
-      switch (message.type) {
-        case "save":
-          this.updateTextDocument(document, message.content);
+    const messageSubscription = webviewPanel.webview.onDidReceiveMessage(
+      (message) => {
+        if (isRuntimePanelWebviewMessage(message)) {
+          void this.handleRuntimePanelMessage(docId, document, message, webviewPanel);
           return;
+        }
 
-        case "ready":
-          // Send initial content when webview is ready
-          updateWebview();
+        if (isRuntimeWebviewMessage(message)) {
+          void this.handleRuntimeMessage(docId, document, message, webviewPanel);
           return;
+        }
 
-        case "error":
-          void vscode.window.showErrorMessage(
-            `Blockly Editor Error: ${message.error}`
-          );
-          return;
+        switch (message.type) {
+          case "save":
+            void this.saveDocument(document, message.content);
+            return;
 
-        case "generateCode":
-          void this.generateCode(document, webviewPanel);
-          return;
+          case "ready":
+            updateWebview();
+            this.runtimeController.ensureState(docId);
+            this.runtimeController.setMode(
+              docId,
+              runtimeUiModeFromConfig(document.uri)
+            );
+            this.postRuntimeState(docId, document.uri, webviewPanel);
+            this.postRuntimePanelSettings(document.uri, webviewPanel);
+            this.postRuntimePanelIoState(docId, document, webviewPanel);
+            return;
 
-        case "startExecution":
-          void this.startExecution(
-            document,
-            webviewPanel,
-            message.mode || "simulation"
-          );
-          return;
+          case "error":
+            void vscode.window.showErrorMessage(
+              `Blockly Editor Error: ${message.error}`
+            );
+            return;
 
-        case "stopExecution":
-          void this.stopExecution(docId);
-          void webviewPanel.webview.postMessage({ type: "executionStopped" });
-          return;
+          case "generateCode":
+            void this.generateCode(document, webviewPanel);
+            return;
 
-        case "executeBlock":
-          void this.executeBlock(docId, message.blockId, webviewPanel);
-          return;
+          // Backward compatibility for older webviews.
+          case "startExecution":
+            void this.handleRuntimeMessage(
+              docId,
+              document,
+              runtimeMessage.setMode(
+                message.mode === "hardware" ? "external" : "local"
+              ),
+              webviewPanel
+            ).then(() =>
+              this.handleRuntimeMessage(
+                docId,
+                document,
+                runtimeMessage.start(),
+                webviewPanel
+              )
+            );
+            return;
+
+          case "stopExecution":
+            void this.handleRuntimeMessage(
+              docId,
+              document,
+              runtimeMessage.stop(),
+              webviewPanel
+            );
+            return;
+
+          case "executeBlock":
+            void this.executeBlock(docId, message.blockId, webviewPanel);
+            return;
+        }
       }
-    });
+    );
 
     // Clean up when editor closes
     webviewPanel.onDidDispose(() => {
       changeDocumentSubscription.dispose();
       messageSubscription.dispose();
       void this.stopExecution(docId, false);
+      this.runtimeController.clear(docId);
+      this.runtimeIoState.delete(docId);
     });
 
     // Send initial content
     updateWebview();
+  }
+
+  private postRuntimeState(
+    docId: string,
+    resource: vscode.Uri,
+    webviewPanel: vscode.WebviewPanel
+  ): void {
+    const state = this.runtimeController.ensureState(docId);
+    webviewPanel.webview.postMessage(runtimeMessage.state(state));
+    webviewPanel.webview.postMessage({
+      type: "runtimeStatus",
+      payload: runtimePanelStatusFromState(resource, state),
+    });
+  }
+
+  private buildIoStateFromDocument(
+    document: vscode.TextDocument
+  ): RuntimePanelIoState {
+    const inputs = new Set<string>();
+    const outputs = new Set<string>();
+    const memory = new Set<string>();
+    const text = document.getText();
+    for (const match of text.matchAll(IO_ADDRESS_PATTERN)) {
+      const address = match[0].toUpperCase();
+      const bucket = classifyAddress(address);
+      if (bucket === "inputs") {
+        inputs.add(address);
+      } else if (bucket === "outputs") {
+        outputs.add(address);
+      } else if (bucket === "memory") {
+        memory.add(address);
+      }
+    }
+
+    const toEntry = (address: string): RuntimePanelIoEntry => ({
+      address,
+      name: address,
+      value: formatDisplayValue(address, isBitAddress(address) ? false : 0),
+      forced: false,
+    });
+
+    return {
+      inputs: Array.from(inputs).sort().map(toEntry),
+      outputs: Array.from(outputs).sort().map(toEntry),
+      memory: Array.from(memory).sort().map(toEntry),
+    };
+  }
+
+  private ensureRuntimeIoState(
+    docId: string,
+    document: vscode.TextDocument
+  ): RuntimePanelIoState {
+    const existing = this.runtimeIoState.get(docId);
+    if (existing) {
+      return existing;
+    }
+    const created = this.buildIoStateFromDocument(document);
+    this.runtimeIoState.set(docId, created);
+    return created;
+  }
+
+  private postRuntimePanelIoState(
+    docId: string,
+    document: vscode.TextDocument,
+    webviewPanel: vscode.WebviewPanel
+  ): void {
+    webviewPanel.webview.postMessage({
+      type: "ioState",
+      payload: this.ensureRuntimeIoState(docId, document),
+    });
+  }
+
+  private postRuntimePanelSettings(
+    resource: vscode.Uri,
+    webviewPanel: vscode.WebviewPanel
+  ): void {
+    webviewPanel.webview.postMessage({
+      type: "settings",
+      payload: collectRuntimePanelSettings(resource),
+    });
+  }
+
+  private upsertRuntimeIoEntry(
+    docId: string,
+    document: vscode.TextDocument,
+    addressRaw: string,
+    value: unknown,
+    forced?: boolean
+  ): RuntimePanelIoState {
+    const ioState = this.ensureRuntimeIoState(docId, document);
+    const address = addressRaw.trim().toUpperCase();
+    const bucket = classifyAddress(address) ?? "memory";
+    const entries = ioState[bucket];
+    let entry = entries.find((candidate) => candidate.address === address);
+    if (!entry) {
+      entry = {
+        address,
+        name: address,
+        value: formatDisplayValue(address, value),
+      };
+      entries.push(entry);
+      entries.sort((left, right) => left.address.localeCompare(right.address));
+    } else {
+      entry.value = formatDisplayValue(address, value);
+    }
+    if (forced !== undefined) {
+      entry.forced = forced;
+    }
+    return ioState;
+  }
+
+  private releaseRuntimeIoEntry(
+    docId: string,
+    document: vscode.TextDocument,
+    addressRaw: string
+  ): RuntimePanelIoState {
+    const ioState = this.ensureRuntimeIoState(docId, document);
+    const address = addressRaw.trim().toUpperCase();
+    for (const bucket of [ioState.inputs, ioState.outputs, ioState.memory]) {
+      const entry = bucket.find((candidate) => candidate.address === address);
+      if (entry) {
+        entry.forced = false;
+      }
+    }
+    return ioState;
+  }
+
+  private async handleRuntimePanelMessage(
+    docId: string,
+    document: vscode.TextDocument,
+    message: RuntimePanelWebviewMessage,
+    webviewPanel: vscode.WebviewPanel
+  ): Promise<void> {
+    switch (message.type) {
+      case "webviewReady":
+        this.runtimeController.ensureState(docId);
+        this.postRuntimeState(docId, document.uri, webviewPanel);
+        this.postRuntimePanelSettings(document.uri, webviewPanel);
+        this.postRuntimePanelIoState(docId, document, webviewPanel);
+        return;
+      case "requestSettings":
+        this.postRuntimePanelSettings(document.uri, webviewPanel);
+        return;
+      case "saveSettings":
+        await applyRuntimePanelSettings(document.uri, message.payload ?? {});
+        this.postRuntimePanelSettings(document.uri, webviewPanel);
+        this.postRuntimeState(docId, document.uri, webviewPanel);
+        webviewPanel.webview.postMessage({
+          type: "status",
+          payload: "Runtime settings saved.",
+        });
+        return;
+      case "runtimeSetMode":
+        await this.handleRuntimeMessage(
+          docId,
+          document,
+          runtimeMessage.setMode(runtimePanelModeToUi(message.mode)),
+          webviewPanel
+        );
+        return;
+      case "runtimeStart": {
+        const current = this.runtimeController.ensureState(docId);
+        await this.handleRuntimeMessage(
+          docId,
+          document,
+          current.isExecuting ? runtimeMessage.stop() : runtimeMessage.start(),
+          webviewPanel
+        );
+        this.postRuntimePanelIoState(docId, document, webviewPanel);
+        return;
+      }
+      case "writeInput":
+      case "forceInput": {
+        const address = (message.address ?? "").trim().toUpperCase();
+        if (!address) {
+          webviewPanel.webview.postMessage({
+            type: "status",
+            payload: "Missing I/O address.",
+          });
+          return;
+        }
+
+        const value = parseRuntimeLiteral(message.value ?? "");
+        this.upsertRuntimeIoEntry(
+          docId,
+          document,
+          address,
+          value,
+          message.type === "forceInput" ? true : undefined
+        );
+
+        try {
+          if (message.type === "forceInput") {
+            await forceVisualRuntimeIo(address, message.value ?? "");
+          } else {
+            await writeVisualRuntimeIo(address, message.value ?? "");
+          }
+        } catch (error) {
+          const details = error instanceof Error ? error.message : String(error);
+          webviewPanel.webview.postMessage({
+            type: "status",
+            payload: `I/O update failed: ${details}`,
+          });
+          this.postRuntimePanelIoState(docId, document, webviewPanel);
+          return;
+        }
+
+        webviewPanel.webview.postMessage({
+          type: "status",
+          payload:
+            message.type === "forceInput"
+              ? `I/O force active at ${address}.`
+              : `I/O write queued for ${address}.`,
+        });
+        this.postRuntimePanelIoState(docId, document, webviewPanel);
+        return;
+      }
+      case "releaseInput": {
+        const address = (message.address ?? "").trim().toUpperCase();
+        if (!address) {
+          webviewPanel.webview.postMessage({
+            type: "status",
+            payload: "Missing I/O address.",
+          });
+          return;
+        }
+
+        this.releaseRuntimeIoEntry(docId, document, address);
+        try {
+          await releaseVisualRuntimeIo(address);
+        } catch (error) {
+          const details = error instanceof Error ? error.message : String(error);
+          webviewPanel.webview.postMessage({
+            type: "status",
+            payload: `I/O release failed: ${details}`,
+          });
+          this.postRuntimePanelIoState(docId, document, webviewPanel);
+          return;
+        }
+        webviewPanel.webview.postMessage({
+          type: "status",
+          payload: `I/O force released at ${address}.`,
+        });
+        this.postRuntimePanelIoState(docId, document, webviewPanel);
+        return;
+      }
+    }
+  }
+
+  private async handleRuntimeMessage(
+    docId: string,
+    document: vscode.TextDocument,
+    message: RuntimeWebviewToExtensionMessage,
+    webviewPanel: vscode.WebviewPanel
+  ): Promise<void> {
+    if (message.type === "runtime.setMode") {
+      this.runtimeController.setMode(docId, message.mode);
+      await persistRuntimeUiMode(document.uri, message.mode);
+      this.postRuntimeState(docId, document.uri, webviewPanel);
+      return;
+    }
+
+    if (message.type === "runtime.openPanel") {
+      await this.runtimeController.openRuntimePanel();
+      this.postRuntimeState(docId, document.uri, webviewPanel);
+      return;
+    }
+
+    if (message.type === "runtime.openSettings") {
+      await this.runtimeController.openRuntimeSettings();
+      this.postRuntimeState(docId, document.uri, webviewPanel);
+      return;
+    }
+
+    const adapter = {
+      startLocal: async () => startVisualRuntime(document.uri, "local"),
+      startExternal: async () => startVisualRuntime(document.uri, "external"),
+      stop: async () => stopVisualRuntime(),
+    };
+
+    try {
+      if (message.type === "runtime.start") {
+        await this.runtimeController.start(docId, adapter);
+      }
+      if (message.type === "runtime.stop") {
+        await this.runtimeController.stop(docId, adapter);
+      }
+    } catch (error) {
+      const details = error instanceof Error ? error.message : String(error);
+      void vscode.window.showErrorMessage(details);
+      webviewPanel.webview.postMessage(runtimeMessage.error(details));
+    } finally {
+      this.postRuntimeState(docId, document.uri, webviewPanel);
+    }
   }
 
   /**
@@ -213,6 +659,14 @@ export class BlocklyEditorProvider implements vscode.CustomTextEditorProvider {
     );
 
     return vscode.workspace.applyEdit(edit);
+  }
+
+  private async saveDocument(
+    document: vscode.TextDocument,
+    content: string
+  ): Promise<void> {
+    await this.updateTextDocument(document, content);
+    await document.save();
   }
 
   /**
@@ -273,70 +727,62 @@ export class BlocklyEditorProvider implements vscode.CustomTextEditorProvider {
     mode: ExecutionMode
   ) {
     const docId = document.uri.toString();
-    
-    try {
-      // Stop any existing execution
-      await this.stopExecution(docId);
+    // Stop any existing execution
+    await this.stopExecution(docId, false);
 
-      const workspaceData: BlocklyWorkspace = JSON.parse(document.getText());
-      const engine = new BlocklyEngine();
-      const result = engine.generateCode(workspaceData);
+    const workspaceData: BlocklyWorkspace = JSON.parse(document.getText());
+    const engine = new BlocklyEngine();
+    const result = engine.generateCode(workspaceData);
 
-      let runtimeClient: RuntimeClient | undefined;
+    let runtimeClient: RuntimeClient | undefined;
 
-      // Hardware mode: connect to trust-runtime
-      if (mode === "hardware") {
-        const config = getRuntimeConfig();
-        
-        runtimeClient = new RuntimeClient(config);
-        
-        try {
-          await runtimeClient.connect();
-          console.log("Blockly: Connected to trust-runtime via Unix socket:", config.controlEndpoint);
-          
-          // Ensure runtime is in RUN mode (not paused)
-          await runtimeClient.resume();
-          console.log("Blockly: Runtime resumed (ready for I/O commands)");
-          
-          vscode.window.showInformationMessage("✅ Connected to trust-runtime for hardware execution");
-        } catch (error) {
-          vscode.window.showErrorMessage(
-            `Failed to connect to trust-runtime: ${error instanceof Error ? error.message : String(error)}`
-          );
-          return;
-        }
-      }
+    // Hardware mode: connect to trust-runtime
+    if (mode === "hardware") {
+      const config = getRuntimeConfig();
 
-      // Create and start interpreter
-      const interpreter = new BlocklyInterpreter(workspaceData, mode, runtimeClient);
-      
-      // Store execution state
-      this.activeExecutions.set(docId, {
-        workspaceData,
-        generatedCode: result.structuredText,
-        mode,
-        runtimeClient,
-        interpreter,
-      });
-
-      // Send execution started message
-      void webviewPanel.webview.postMessage({
-        type: "executionStarted",
-        mode,
-        code: result.structuredText,
-      });
-
-      // Start execution
-      void this.executeBlocksWithHighlight(workspaceData, interpreter, webviewPanel);
-
-      vscode.window.showInformationMessage(
-        `Blockly program execution started in ${mode} mode`
+      runtimeClient = new RuntimeClient(config);
+      await runtimeClient.connect();
+      console.log(
+        "Blockly: Connected to trust-runtime via Unix socket:",
+        config.controlEndpoint
       );
 
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`Failed to start execution: ${errorMessage}`);
+      // Ensure runtime is in RUN mode (not paused)
+      await runtimeClient.resume();
+      console.log("Blockly: Runtime resumed (ready for I/O commands)");
+
+      vscode.window.showInformationMessage(
+        "✅ Connected to trust-runtime for hardware execution"
+      );
     }
+
+    // Create and start interpreter
+    const interpreter = new BlocklyInterpreter(workspaceData, mode, runtimeClient);
+
+    // Store execution state
+    this.activeExecutions.set(docId, {
+      workspaceData,
+      generatedCode: result.structuredText,
+      mode,
+      runtimeClient,
+      interpreter,
+    });
+    this.runtimeIoState.set(docId, this.buildIoStateFromDocument(document));
+    this.postRuntimePanelIoState(docId, document, webviewPanel);
+
+    // Send execution started message
+    void webviewPanel.webview.postMessage({
+      type: "executionStarted",
+      mode,
+      code: result.structuredText,
+    });
+
+    // Start execution
+    void this.executeBlocksWithHighlight(workspaceData, interpreter, webviewPanel);
+
+    vscode.window.showInformationMessage(
+      `Blockly program execution started in ${mode} mode`
+    );
   }
 
   /**

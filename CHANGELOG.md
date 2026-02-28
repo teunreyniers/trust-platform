@@ -6,7 +6,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
-Target release: `v0.9.16`
+Target release: `v0.9.17`
 
 ### Added
 
@@ -23,6 +23,14 @@ Target release: `v0.9.16`
   - Added a custom editor for `.ladder.json` files with simulation/hardware execution modes and runtime I/O integration.
   - Added ladder webview build pipeline/assets and example programs under `examples/ladder/`.
   - Updated `examples/hardware_8do/README.md` to document ladder/blockly/statechart usage against the shared hardware backend.
+  - Added rung wire visualization and an in-editor properties panel for contact/coil editing, position updates, and element delete actions.
+  - Added rung removal controls and pan interactions (Space + drag / middle mouse drag) in the ladder canvas.
+  - Migrated ladder program contract to schema v2 (`schemaVersion: 2`, `networks[]`, `nodes[]`, `edges[]`) with explicit legacy schema rejection.
+  - Added timer/counter/compare/math block insertion, rendering, and property editing in the ladder webview.
+  - Refactored ladder webview architecture to satisfy SOLID/KISS boundaries by splitting properties and node-drawing responsibilities into dedicated modules.
+  - Added deterministic `.st` companion generation for `.ladder.json`, `.blockly.json`, and `.statechart.json` sources on save and create/import flows.
+  - Generated companions now emit function blocks so visual logic can be composed inside standard ST projects without requiring custom editors at runtime.
+  - Switched visual custom editors (`ladder`, `blockly`, `statechart`) to optional priority so text-first `.st` workflows remain the default.
 - Web IDE project selection flow:
   - Added `/api/ide/project` and `/api/ide/project/open` to query/switch active project root at runtime.
   - Added no-bundle startup support for `trust-runtime run` so `/ide` can start first and open a project folder from the browser.
@@ -287,6 +295,8 @@ Target release: `v0.9.16`
 - Blockly webview CSP no longer permits inline scripts.
 - VS Code extension activation now registers both Blockly and Ladder custom editors after merge integration, preserving `.blockly.json` and `.ladder.json` editor routing.
 - Ladder webview CSP no longer permits inline scripts.
+- Ladder editor element placement now works when clicking canvas content (grid/rung shapes), fixing missed insertions for contact/coil placement.
+- Ladder editor drag/drop now snaps consistently and supports explicit pan mode without breaking element move interactions.
 - VS Code statechart custom editor packaging now loads the webview template from bundled extension code instead of `src/**` runtime paths excluded by `.vscodeignore`.
 - VS Code statechart editor lifecycle now stops active execution sessions when the panel closes, ensuring timers/runtime connections are cleaned up.
 - State machine engine transition execution now awaits exit/transition/entry hardware actions before completing transitions.

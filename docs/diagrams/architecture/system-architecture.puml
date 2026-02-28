@@ -16,9 +16,13 @@ package "VS Code Extension" as vscode #LightBlue {
     component "STLanguageClient" as langClient
     component "DebugAdapterFactory" as debugFactory
     component "Runtime Panel\n(Webview)" as runtimePanel <<ioPanel.ts>>
+    component "Visual Editors\n(ladder/blockly/statechart)" as visualEditors
+    component "Visual Companion Sync\n(*.json -> *.st)" as visualCompanion
 
     extMain --> langClient : creates
     extMain --> debugFactory : registers
+    extMain --> visualEditors : registers (priority: option)
+    extMain --> visualCompanion : registers + commands
 }
 
 note right of runtimePanel
@@ -26,6 +30,14 @@ note right of runtimePanel
     requests (stIoState/stIoWrite/stReload)
     and writes workspace settings that
     override runtime control endpoints.
+end note
+
+note right of visualCompanion
+    Visual sources stay optional.
+    Save/create/import updates
+    deterministic sibling `.st`
+    companions for text-first runtime
+    and mixed-language projects.
 end note
 
 ' ============================================================

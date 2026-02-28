@@ -5,6 +5,7 @@ Visual programming editor for IEC 61131-3 PLC programs using Google Blockly.
 ## Overview
 
 The Blockly PLC Editor provides a drag-and-drop visual programming interface for creating PLC programs. Blocks are automatically converted to IEC 61131-3 Structured Text (ST) code that can be executed on real hardware or simulated.
+The extension also auto-generates a sibling `.st` companion on save/import so Blockly logic can be mixed into standard ST projects without requiring the custom editor at runtime.
 
 ## Features
 
@@ -32,7 +33,7 @@ The Blockly PLC Editor provides a drag-and-drop visual programming interface for
 3. Enter a program name
 4. Select target directory
 
-A new `.blockly.json` file will be created and opened in the Blockly editor.
+A new `.blockly.json` source file and `<name>.st` companion will be created. By default the generated `.st` file is opened for ST-first workflows.
 
 ### Importing an Existing Program
 

@@ -1,6 +1,10 @@
 /**
  * Type definitions for Blockly Editor webview
  */
+import type {
+  RuntimeExtensionToWebviewMessage,
+  RuntimeWebviewToExtensionMessage,
+} from "../../visual/runtime/runtimeMessages";
 
 /**
  * Block category in toolbox
@@ -107,9 +111,8 @@ export type WebviewToExtensionMessage =
   | { type: "ready" }
   | { type: "error"; error: string }
   | { type: "generateCode" }
-  | { type: "startExecution"; mode: ExecutionMode }
-  | { type: "stopExecution" }
-  | { type: "executeBlock"; blockId: string };
+  | { type: "executeBlock"; blockId: string }
+  | RuntimeWebviewToExtensionMessage;
 
 /**
  * Messages sent from extension to webview
@@ -121,7 +124,8 @@ export type ExtensionToWebviewMessage =
   | { type: "executionStopped" }
   | { type: "blockExecuted"; blockId: string }
   | { type: "highlightBlock"; blockId: string }
-  | { type: "unhighlightBlock"; blockId: string };
+  | { type: "unhighlightBlock"; blockId: string }
+  | RuntimeExtensionToWebviewMessage;
 
 /**
  * PLC I/O configuration

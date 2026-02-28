@@ -1,30 +1,31 @@
 import React, { useEffect, useRef, useState } from "react";
-import * as Blockly from 'blockly';
+import * as Blockly from "blockly";
 import { useBlockly } from "./hooks/useBlockly";
-import { BlocklyWorkspace, ExecutionMode } from "./types";
 import { registerPLCBlocks } from "./blocklyBlocks";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { CodePanel } from "./CodePanel";
+import { StRuntimePanel } from "../../visual/runtime/webview/StRuntimePanel";
+import { useRightPaneResize } from "../../visual/runtime/webview/useRightPaneResize";
+import type { RightPaneView } from "../../visual/runtime/runtimeTypes";
 import "./styles.css";
 import "./blocklyTheme.css";
+import "../../visual/runtime/webview/rightPaneResize.css";
 
 /**
  * Main Blockly Editor Component
  * Provides visual programming interface for PLC programs
  */
 export const BlocklyEditor: React.FC = () => {
-  console.log('[BlocklyEditor webview] Component rendering');
-  
+  console.log("[BlocklyEditor webview] Component rendering");
+
   const {
     workspace,
     generatedCode,
-    executionMode,
-    isExecuting,
+    runtimeState,
     errors,
     saveWorkspace,
     generateCode,
-    startExecution,
-    stopExecution,
+    openRuntimePanel,
   } = useBlockly();
 
   const workspaceRef = useRef<HTMLDivElement>(null);
@@ -32,23 +33,28 @@ export const BlocklyEditor: React.FC = () => {
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [showCode, setShowCode] = useState(false);
   const [showProperties, setShowProperties] = useState(true);
-  const [selectedMode, setSelectedMode] = useState<ExecutionMode>("simulation");
+  const [rightPaneView, setRightPaneView] = useState<RightPaneView>("io");
+  const {
+    rightPaneStyle,
+    resizeHandleClassName,
+    resizeHandleProps,
+  } = useRightPaneResize("blockly");
 
   // Initialize Blockly workspace
   useEffect(() => {
-    if (!workspaceRef.current || blocklyWorkspaceRef.current) return;
+    if (!workspaceRef.current || blocklyWorkspaceRef.current) {
+      return;
+    }
 
-    // Register custom PLC blocks
     registerPLCBlocks();
 
-    // Create Blockly workspace
     const blocklyWorkspace = Blockly.inject(workspaceRef.current, {
       toolbox: getToolboxXML(),
       grid: {
         spacing: 20,
         length: 3,
-        colour: '#ccc',
-        snap: true
+        colour: "#ccc",
+        snap: true,
       },
       zoom: {
         controls: true,
@@ -56,44 +62,39 @@ export const BlocklyEditor: React.FC = () => {
         startScale: 1.0,
         maxScale: 3,
         minScale: 0.3,
-        scaleSpeed: 1.2
+        scaleSpeed: 1.2,
       },
       trashcan: true,
       move: {
         scrollbars: {
           horizontal: true,
-          vertical: true
+          vertical: true,
         },
         drag: true,
-        wheel: true
-      }
+        wheel: true,
+      },
     });
 
     blocklyWorkspaceRef.current = blocklyWorkspace;
     (window as any).blocklyWorkspace = blocklyWorkspace;
-    console.log('[BlocklyEditor] Blockly workspace stored in window');
+    console.log("[BlocklyEditor] Blockly workspace stored in window");
 
-    // Listen for workspace changes (but ignore during programmatic loads)
     blocklyWorkspace.addChangeListener((event: Blockly.Events.Abstract) => {
-      // Only save on user-initiated changes
-      if (event.type === Blockly.Events.BLOCK_CREATE ||
-          event.type === Blockly.Events.BLOCK_DELETE ||
-          event.type === Blockly.Events.BLOCK_CHANGE ||
-          event.type === Blockly.Events.BLOCK_MOVE) {
-        
-        // Don't save during programmatic loads
+      if (
+        event.type === Blockly.Events.BLOCK_CREATE ||
+        event.type === Blockly.Events.BLOCK_DELETE ||
+        event.type === Blockly.Events.BLOCK_CHANGE ||
+        event.type === Blockly.Events.BLOCK_MOVE
+      ) {
         if (Blockly.Events.getGroup()) {
           return;
         }
-        
-        // Serialize workspace and save
+
         const json = Blockly.serialization.workspaces.save(blocklyWorkspace);
-        
-        // Preserve metadata from current workspace
         saveWorkspace({
           blocks: json.blocks || {},
           variables: json.variables || [],
-          metadata: workspace?.metadata || { name: 'Untitled', description: '' }
+          metadata: workspace?.metadata || { name: "Untitled", description: "" },
         });
       }
     });
@@ -110,31 +111,32 @@ export const BlocklyEditor: React.FC = () => {
 
   // Update workspace when data changes
   useEffect(() => {
-    if (!workspace || !blocklyWorkspaceRef.current) return;
-    
+    if (!workspace || !blocklyWorkspaceRef.current) {
+      return;
+    }
+
     try {
-      // Clear existing workspace first
       blocklyWorkspaceRef.current.clear();
-      
-      // Prepare the state object for Blockly serialization
-      // Blockly expects: { blocks: {...}, variables: [...] }
-      // Our JSON has: { blocks: {...}, variables: [...], metadata: {...} }
       const blocklyState = {
         blocks: workspace.blocks,
-        variables: workspace.variables || []
+        variables: workspace.variables || [],
       };
-      
+
       console.log("Loading workspace from JSON:", blocklyState);
-      
-      // Disable events during load to prevent triggering save
       Blockly.Events.disable();
-      Blockly.serialization.workspaces.load(blocklyState, blocklyWorkspaceRef.current);
+      Blockly.serialization.workspaces.load(
+        blocklyState,
+        blocklyWorkspaceRef.current
+      );
       Blockly.Events.enable();
-      
+
       console.log("✅ Workspace loaded successfully");
-      console.log("Total blocks in workspace:", blocklyWorkspaceRef.current.getAllBlocks(false).length);
+      console.log(
+        "Total blocks in workspace:",
+        blocklyWorkspaceRef.current.getAllBlocks(false).length
+      );
     } catch (error) {
-      Blockly.Events.enable(); // Re-enable events even if error
+      Blockly.Events.enable();
       console.error("❌ Failed to load workspace:", error);
       console.error("Workspace data:", workspace);
     }
@@ -145,215 +147,99 @@ export const BlocklyEditor: React.FC = () => {
     setShowCode(true);
   };
 
-  const handleStartExecution = () => {
-    startExecution(selectedMode);
-  };
-
-  const handleStopExecution = () => {
-    stopExecution();
-  };
-
-  const handleBlockSelected = (blockId: string) => {
-    setSelectedBlockId(blockId);
-  };
-
-  // Define toolbox structure (blocks available for dragging)
   const getToolboxXML = () => {
     return {
-      kind: 'categoryToolbox',
+      kind: "categoryToolbox",
       contents: [
         {
-          kind: 'category',
-          name: 'Logic',
-          colour: '210',
+          kind: "category",
+          name: "Logic",
+          colour: "210",
           contents: [
-            { kind: 'block', type: 'controls_if' },
-            { kind: 'block', type: 'logic_compare' },
-            { kind: 'block', type: 'logic_operation' },
-            { kind: 'block', type: 'logic_negate' },
-            { kind: 'block', type: 'logic_boolean' },
-          ]
+            { kind: "block", type: "controls_if" },
+            { kind: "block", type: "logic_compare" },
+            { kind: "block", type: "logic_operation" },
+            { kind: "block", type: "logic_negate" },
+            { kind: "block", type: "logic_boolean" },
+          ],
         },
         {
-          kind: 'category',
-          name: 'Loops',
-          colour: '120',
+          kind: "category",
+          name: "Loops",
+          colour: "120",
           contents: [
-            { kind: 'block', type: 'controls_whileUntil' },
-            { kind: 'block', type: 'controls_for' },
-            { kind: 'block', type: 'controls_forEach' },
-            { kind: 'block', type: 'controls_flow_statements' },
-          ]
+            { kind: "block", type: "controls_whileUntil" },
+            { kind: "block", type: "controls_for" },
+            { kind: "block", type: "controls_forEach" },
+            { kind: "block", type: "controls_flow_statements" },
+          ],
         },
         {
-          kind: 'category',
-          name: 'Math',
-          colour: '230',
+          kind: "category",
+          name: "Math",
+          colour: "230",
           contents: [
-            { kind: 'block', type: 'math_number' },
-            { kind: 'block', type: 'math_arithmetic' },
-            { kind: 'block', type: 'math_single' },
-            { kind: 'block', type: 'math_trig' },
-            { kind: 'block', type: 'math_constant' },
-            { kind: 'block', type: 'math_number_property' },
-            { kind: 'block', type: 'math_change' },
-            { kind: 'block', type: 'math_round' },
-          ]
+            { kind: "block", type: "math_number" },
+            { kind: "block", type: "math_arithmetic" },
+            { kind: "block", type: "math_single" },
+            { kind: "block", type: "math_trig" },
+            { kind: "block", type: "math_constant" },
+            { kind: "block", type: "math_number_property" },
+            { kind: "block", type: "math_change" },
+            { kind: "block", type: "math_round" },
+          ],
         },
         {
-          kind: 'category',
-          name: 'Variables',
-          colour: '330',
-          custom: 'VARIABLE'
+          kind: "category",
+          name: "Variables",
+          colour: "330",
+          custom: "VARIABLE",
         },
         {
-          kind: 'category',
-          name: 'Functions',
-          colour: '290',
-          custom: 'PROCEDURE'
+          kind: "category",
+          name: "Functions",
+          colour: "290",
+          custom: "PROCEDURE",
         },
         {
-          kind: 'category',
-          name: 'PLC I/O',
-          colour: '160',
+          kind: "category",
+          name: "PLC I/O",
+          colour: "160",
           contents: [
-            { kind: 'block', type: 'io_digital_write' },
-            { kind: 'block', type: 'io_digital_read' },
-          ]
+            { kind: "block", type: "io_digital_write" },
+            { kind: "block", type: "io_digital_read" },
+          ],
         },
         {
-          kind: 'category',
-          name: 'PLC Timers',
-          colour: '65',
-          contents: [
-            { kind: 'block', type: 'timer_ton' },
-          ]
+          kind: "category",
+          name: "PLC Timers",
+          colour: "65",
+          contents: [{ kind: "block", type: "timer_ton" }],
         },
         {
-          kind: 'category',
-          name: 'PLC Counters',
-          colour: '20',
-          contents: [
-            { kind: 'block', type: 'counter_ctu' },
-          ]
+          kind: "category",
+          name: "PLC Counters",
+          colour: "20",
+          contents: [{ kind: "block", type: "counter_ctu" }],
         },
         {
-          kind: 'category',
-          name: 'Comments',
-          colour: '160',
-          contents: [
-            { kind: 'block', type: 'comment' },
-          ]
+          kind: "category",
+          name: "Comments",
+          colour: "160",
+          contents: [{ kind: "block", type: "comment" }],
         },
-      ]
+      ],
     };
   };
 
   return (
     <div className="blockly-editor-container">
-      {/* Toolbar */}
-      <div className="blockly-toolbar">
-        <div className="toolbar-section">
-          <h2 className="editor-title">Blockly PLC Editor</h2>
-          {workspace?.metadata?.name && (
-            <span className="workspace-name">({workspace.metadata.name})</span>
-          )}
-        </div>
-
-        <div className="toolbar-section">
-          <button
-            className="toolbar-button"
-            onClick={handleGenerateCode}
-            disabled={!workspace}
-            title="Generate ST Code"
-          >
-            <span>⚙️</span> Generate Code
-          </button>
-
-          {/* Execution Mode Selector (only when not executing) */}
-          {!isExecuting && (
-            <>
-              <button
-                className={`toolbar-button ${selectedMode === "simulation" ? "active" : ""}`}
-                onClick={() => setSelectedMode("simulation")}
-                title="Simulation mode (logged to console)"
-              >
-                <span>🖥️</span> Simulation
-              </button>
-              <button
-                className={`toolbar-button ${selectedMode === "hardware" ? "active" : ""}`}
-                onClick={() => setSelectedMode("hardware")}
-                title="Hardware mode (real I/O via trust-runtime)"
-              >
-                <span>🔌</span> Hardware
-              </button>
-            </>
-          )}
-
-          {/* Run/Stop Button */}
-          {!isExecuting ? (
-            <button
-              className="toolbar-button success"
-              onClick={handleStartExecution}
-              disabled={!workspace}
-              title={`Run in ${selectedMode} mode`}
-            >
-              <span>▶️</span> Run
-            </button>
-          ) : (
-            <>
-              <button
-                className="toolbar-button danger"
-                onClick={handleStopExecution}
-                title="Stop execution"
-              >
-                <span>⏹️</span> Stop
-              </button>
-              <span className="execution-indicator">
-                {executionMode === "simulation" ? "🖥️ Simulating" : "🔌 Running on Hardware"}
-              </span>
-            </>
-          )}
-
-          <button
-            className="toolbar-button"
-            onClick={() => setShowCode(!showCode)}
-            title="Toggle code view"
-          >
-            <span>{showCode ? "📦" : "📝"}</span>
-            {showCode ? "Blocks" : "Code"}
-          </button>
-
-          <button
-            className="toolbar-button"
-            onClick={() => setShowProperties(!showProperties)}
-            title="Toggle properties panel"
-          >
-            <span>⚙️</span> Properties
-          </button>
-        </div>
-      </div>
-
-      {/* Execution Status */}
-      {isExecuting && (
-        <div className={`execution-banner ${executionMode}`}>
-          <span className="status-indicator">●</span>
-          Running in {executionMode} mode
-        </div>
-      )}
-
-      {/* Main Content Area */}
       <div className="blockly-content">
-        {/* Center Panel - Workspace or Generated Code */}
         <div className="blockly-workspace-container">
           {showCode ? (
             <CodePanel code={generatedCode} errors={errors} />
           ) : (
-            <div
-              ref={workspaceRef}
-              className="blockly-workspace"
-              id="blocklyDiv"
-            >
+            <div ref={workspaceRef} className="blockly-workspace" id="blocklyDiv">
               {!workspace && (
                 <div className="workspace-placeholder">
                   <p>Loading Blockly workspace...</p>
@@ -363,24 +249,115 @@ export const BlocklyEditor: React.FC = () => {
           )}
         </div>
 
-        {/* Right Panel - Properties */}
-        {showProperties && (
-          <div className="blockly-properties-container">
-            <PropertiesPanel
-              workspace={workspace}
-              selectedBlockId={selectedBlockId}
-              onWorkspaceChange={saveWorkspace}
-            />
+        <div className={resizeHandleClassName} {...resizeHandleProps} />
+
+        <div className="blockly-right-panel right-pane-resizable" style={rightPaneStyle}>
+          <div className="blockly-right-pane-tabs" role="tablist" aria-label="Right pane view">
+            <button
+              type="button"
+              className={`blockly-right-pane-tab ${
+                rightPaneView === "io" ? "active" : ""
+              }`}
+              onClick={() => setRightPaneView("io")}
+              aria-pressed={rightPaneView === "io"}
+            >
+              I/O
+            </button>
+            <button
+              type="button"
+              className={`blockly-right-pane-tab ${
+                rightPaneView === "settings" ? "active" : ""
+              }`}
+              onClick={() => setRightPaneView("settings")}
+              aria-pressed={rightPaneView === "settings"}
+            >
+              Settings
+            </button>
+            <button
+              type="button"
+              className={`blockly-right-pane-tab ${
+                rightPaneView === "tools" ? "active" : ""
+              }`}
+              onClick={() => setRightPaneView("tools")}
+              aria-pressed={rightPaneView === "tools"}
+            >
+              Tools
+            </button>
           </div>
-        )}
+
+          {rightPaneView === "tools" ? (
+            <>
+              <section className="blockly-tools-panel" aria-label="Blockly tools">
+                <div className="blockly-tools-panel__title">Blockly Tools</div>
+                {workspace?.metadata?.name && (
+                  <div className="blockly-tools-panel__hint">
+                    {workspace.metadata.name}
+                  </div>
+                )}
+                <div className="blockly-tools-panel__grid">
+                  <button
+                    type="button"
+                    className="blockly-tools-panel__button"
+                    onClick={handleGenerateCode}
+                    disabled={!workspace}
+                    title="Generate Structured Text code"
+                  >
+                    Generate Code
+                  </button>
+                  <button
+                    type="button"
+                    className="blockly-tools-panel__button"
+                    onClick={() => setShowCode(!showCode)}
+                    title="Toggle code view"
+                  >
+                    {showCode ? "Show Blocks" : "Show Code"}
+                  </button>
+                  <button
+                    type="button"
+                    className="blockly-tools-panel__button"
+                    onClick={() => setShowProperties(!showProperties)}
+                    title="Toggle properties panel"
+                  >
+                    {showProperties ? "Hide Properties" : "Show Properties"}
+                  </button>
+                  <button
+                    type="button"
+                    className="blockly-tools-panel__button"
+                    onClick={openRuntimePanel}
+                    title="Open Structured Text runtime panel"
+                  >
+                    Open Runtime Panel
+                  </button>
+                </div>
+              </section>
+              {showProperties && (
+                <div className="blockly-properties-container">
+                  <PropertiesPanel
+                    workspace={workspace}
+                    selectedBlockId={selectedBlockId}
+                    onWorkspaceChange={saveWorkspace}
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <StRuntimePanel
+              activeView={rightPaneView === "settings" ? "settings" : "io"}
+              onViewChange={setRightPaneView}
+              showToolsShortcut
+              toolsShortcutLabel="Tools"
+            />
+          )}
+        </div>
       </div>
 
-      {/* Status Bar */}
       <div className="blockly-status-bar">
         <span>
-          Blocks: {workspace?.blocks?.blocks?.length || 0} |
-          Variables: {workspace?.variables?.length || 0}
+          Blocks: {workspace?.blocks?.blocks?.length || 0} | Variables:{" "}
+          {workspace?.variables?.length || 0}
         </span>
+        <span>Mode: {runtimeState.mode === "local" ? "Local" : "External"}</span>
+        <span>Status: {runtimeState.status}</span>
         {errors.length > 0 && (
           <span className="error-count">⚠️ {errors.length} warnings</span>
         )}

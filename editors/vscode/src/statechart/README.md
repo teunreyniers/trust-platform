@@ -1,6 +1,7 @@
 # StateChart Editor - Usage Guide
 
 Visual UML StateChart editor with simulation and real-hardware execution.
+Statechart sources also auto-generate sibling `.st` companions so state machines can be composed inside standard ST projects without requiring custom editor runtime.
 
 ## Table of Contents
 
@@ -51,6 +52,9 @@ Visual UML StateChart editor with simulation and real-hardware execution.
 ```text
 examples/statecharts/traffic-light.statechart.json
 ```
+
+Saving the visual source refreshes `examples/statecharts/traffic-light.st`.
+By default create/import flows open the generated `.st` companion first.
 
 ### 2. Edit a statechart
 

@@ -83,11 +83,14 @@ docs/internal/testing/*
 docs/internal/testing/checklists/*
 !docs/internal/testing/checklists/hmi-complete-implementation-checklist.md
 !docs/internal/testing/checklists/web-ide-full-implementation-checklist.md
+!docs/internal/testing/checklists/ld-specification-detailed-checklist.md
+!docs/internal/testing/checklists/visual-editors-st-runtime-unification-checklist.md
 !docs/internal/testing/evidence/
 docs/internal/testing/evidence/*
 !docs/internal/testing/evidence/web-ide-migration-parity-2026-02-15.md
 !docs/internal/testing/evidence/web-ide-accessibility-validation-2026-02-15.md
 !docs/internal/testing/evidence/web-ide-performance-gates-2026-02-15.md
 !docs/internal/testing/evidence/web-ide-full-checklist-evidence-2026-02-15.md
+!docs/internal/testing/evidence/ld-runtime-pane-parity-2026-02-27.md
 CLAUDE.md
 AGENTS.md

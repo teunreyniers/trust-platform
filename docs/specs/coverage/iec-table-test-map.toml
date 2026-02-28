@@ -49,3 +49,37 @@ tests = ["iec_table64", "iec_table66"]
 id = "Table 72"
 spec = "docs/specs/06-statements.md"
 tests = ["iec_table72"]
+
+[[table]]
+id = "Section 8.2 (LD core semantics)"
+spec = "docs/specs/11-ladder-diagram.md"
+tests = [
+  "ladder_engine_deterministic_series_no_nc",
+  "ladder_engine_parallel_branch_semantics",
+  "ladder_engine_buffered_write_commit",
+  "ladder_engine_local_global_symbol_resolution",
+  "ladder_engine_symbolic_runtime_force_write",
+  "ladder_engine_unresolved_symbol_and_assignability_diagnostics",
+  "ladder_engine_invalid_topology_diagnostics",
+]
+
+[[table]]
+id = "Table 45 (Counter FBs in LD profile)"
+spec = "docs/specs/11-ladder-diagram.md"
+tests = ["ladder_engine_counter_behavior"]
+
+[[table]]
+id = "Table 46 (Timer FBs in LD profile)"
+spec = "docs/specs/11-ladder-diagram.md"
+tests = ["ladder_engine_ton_tof_tp_behavior"]
+
+[[table]]
+id = "LD profile schema/runtime parity"
+spec = "docs/specs/12-ladder-profile-trust.md"
+tests = [
+  "ladder_schema_v2_acceptance_rejection",
+  "plcopen_ld_interop_roundtrip_and_diagnostics",
+  "visual_runtime_controller_contract",
+  "visual_runtime_panel_bridge_contract",
+  "visual_right_pane_resize_contract",
+]

@@ -3,7 +3,7 @@
   "displayName": "truST LSP",
   "description": "truST LSP — IEC 61131-3 Structured Text language support",
   "icon": "icon.png",
-  "version": "0.9.16",
+  "version": "0.9.17",
   "publisher": "trust-platform",
   "license": "MIT OR Apache-2.0",
   "engines": {
@@ -27,6 +27,7 @@
     "directory": "editors/vscode"
   },
   "activationEvents": [
+    "onStartupFinished",
     "onLanguage:structured-text",
     "onDebug:structured-text",
     "onCommand:trust-lsp.newProject",
@@ -100,7 +101,11 @@
     "onCommand:trust-lsp.statechart.new",
     "onCommand:trust-lsp.statechart.import",
     "onCommand:trust-lsp.blockly.new",
-    "onCommand:trust-lsp.blockly.import"
+    "onCommand:trust-lsp.blockly.import",
+    "onCustomEditor:trust-lsp.ladder.editor",
+    "onCustomEditor:trust-lsp.statechartEditor",
+    "onCustomEditor:trust-lsp.blockly.editor",
+    "onCommand:trust-lsp.visual.syncCompanionSt"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -239,6 +244,21 @@
           "type": "string",
           "default": "",
           "description": "Path to the trust-runtime CLI executable for running Structured Text tests (leave empty to use trust-runtime from PATH)."
+        },
+        "trust-lsp.visual.autoGenerateStCompanion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically generate or update .st companion files when saving .ladder.json, .blockly.json, or .statechart.json files."
+        },
+        "trust-lsp.visual.openStCompanionOnCreate": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open the generated .st companion after creating or importing visual logic files."
+        },
+        "trust-lsp.visual.autoOpenCustomEditors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open .ladder.json, .statechart.json, and .blockly.json files with their visual editors."
         },
         "trust-lsp.hmi.pollIntervalMs": {
           "type": "number",
@@ -2200,6 +2220,11 @@
       {
         "command": "trust-lsp.blockly.import",
         "title": "Structured Text: Import Blockly Program",
+        "category": "Structured Text"
+      },
+      {
+        "command": "trust-lsp.visual.syncCompanionSt",
+        "title": "Structured Text: Sync Visual ST Companion",
         "category": "Structured Text"
       }
     ],

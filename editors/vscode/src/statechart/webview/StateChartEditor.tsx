@@ -12,19 +12,26 @@ import { StateNode } from "./StateNode";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { ExecutionPanel } from "./ExecutionPanel";
 import { ActionMappingsPanel } from "./ActionMappingsPanel";
+import { StatechartToolsPanel } from "./StatechartToolsPanel";
 import { useStateChart } from "./hooks/useStateChart";
 import {
-  VSCodeAPI,
   WebviewToExtensionMessage,
   ExtensionToWebviewMessage,
   StateChartNode,
   StateChartEdge,
   ExecutionState,
 } from "./types";
+import { runtimeMessage } from "../../visual/runtime/runtimeMessages";
+import { getVsCodeApi } from "../../visual/runtime/webview/vscodeApi";
+import { useRightPaneResize } from "../../visual/runtime/webview/useRightPaneResize";
+import {
+  DEFAULT_RUNTIME_UI_STATE,
+  type RightPaneView,
+  type RuntimeUiState,
+} from "../../visual/runtime/runtimeTypes";
+import "../../visual/runtime/webview/rightPaneResize.css";
 
-// VSCode API for webview communication
-declare const acquireVsCodeApi: () => VSCodeAPI;
-const vscode = acquireVsCodeApi();
+const vscode = getVsCodeApi();
 
 const nodeTypes = {
   stateNode: StateNode,
@@ -55,7 +62,15 @@ export const StateChartEditor: React.FC = () => {
   const [selectedNode, setSelectedNode] = useState<StateChartNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<StateChartEdge | null>(null);
   const [executionState, setExecutionState] = useState<ExecutionState | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
+  const [runtimeState, setRuntimeState] = useState<RuntimeUiState>(
+    DEFAULT_RUNTIME_UI_STATE
+  );
+  const [rightPaneView, setRightPaneView] = useState<RightPaneView>("io");
+  const {
+    rightPaneStyle,
+    resizeHandleClassName,
+    resizeHandleProps,
+  } = useRightPaneResize("statechart");
 
   // Handle messages from extension
   useEffect(() => {
@@ -81,16 +96,26 @@ export const StateChartEditor: React.FC = () => {
 
         case "executionState":
           setExecutionState(message.state);
-          setIsRunning(true);
           // Update active state indicator
           updateActiveState(message.state.currentState);
           break;
 
         case "executionStopped":
           setExecutionState(null);
-          setIsRunning(false);
           // Clear active state indicators
           updateActiveState(null);
+          break;
+
+        case "runtime.state":
+          setRuntimeState(message.state);
+          if (!message.state.isExecuting) {
+            setExecutionState(null);
+            updateActiveState(null);
+          }
+          break;
+
+        case "runtime.error":
+          console.error("StateChart runtime error:", message.message);
           break;
       }
     };
@@ -129,16 +154,8 @@ export const StateChartEditor: React.FC = () => {
     } as WebviewToExtensionMessage);
   }, [exportToXState]);
 
-  // Execution control handlers
-  const handleStartExecution = useCallback((mode: import("./types").ExecutionMode) => {
-    vscode.postMessage({ 
-      type: "startExecution",
-      mode,
-    } as WebviewToExtensionMessage);
-  }, []);
-
-  const handleStopExecution = useCallback(() => {
-    vscode.postMessage({ type: "stopExecution" } as WebviewToExtensionMessage);
+  const handleOpenRuntimePanel = useCallback(() => {
+    vscode.postMessage(runtimeMessage.openPanel() as WebviewToExtensionMessage);
   }, []);
 
   const handleSendEvent = useCallback((event: string) => {
@@ -166,6 +183,10 @@ export const StateChartEditor: React.FC = () => {
     addNewState("initial");
   }, [addNewState]);
 
+  const handleAddFinalState = useCallback(() => {
+    addNewState("final");
+  }, [addNewState]);
+
   const handleDelete = useCallback(() => {
     deleteSelected();
     setSelectedNode(null);
@@ -175,7 +196,7 @@ export const StateChartEditor: React.FC = () => {
   return (
     <div style={{ width: "100%", height: "100vh", display: "flex" }}>
       {/* Main editor area */}
-      <div style={{ flex: 1, position: "relative" }}>
+      <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -226,57 +247,6 @@ export const StateChartEditor: React.FC = () => {
             }}
           />
 
-          {/* Toolbar Panel */}
-          <Panel
-            position="top-left"
-            style={{
-              display: "flex",
-              gap: "8px",
-              padding: "8px",
-              backgroundColor: "var(--vscode-editor-background)",
-              border: "1px solid var(--vscode-panel-border)",
-              borderRadius: "4px",
-            }}
-          >
-            <button
-              onClick={handleAddState}
-              style={buttonStyle}
-              title="Add Normal State"
-            >
-              ➕ State
-            </button>
-            <button
-              onClick={handleAddInitialState}
-              style={buttonStyle}
-              title="Add Initial State"
-            >
-              🟢 Initial
-            </button>
-            <button
-              onClick={() => addNewState("final")}
-              style={buttonStyle}
-              title="Add Final State"
-            >
-              🔴 Final
-            </button>
-            <div style={{ width: "1px", background: "var(--vscode-panel-border)" }} />
-            <button
-              onClick={handleDelete}
-              style={buttonStyle}
-              title="Delete Selected"
-              disabled={!selectedNode && !selectedEdge}
-            >
-              🗑️ Delete
-            </button>
-            <button onClick={autoLayout} style={buttonStyle} title="Auto Layout">
-              🔀 Layout
-            </button>
-            <div style={{ width: "1px", background: "var(--vscode-panel-border)" }} />
-            <button onClick={handleSave} style={buttonStyle} title="Save">
-              💾 Save
-            </button>
-          </Panel>
-
           {/* Info Panel */}
           <Panel
             position="bottom-right"
@@ -295,53 +265,102 @@ export const StateChartEditor: React.FC = () => {
         </ReactFlow>
       </div>
 
+      <div className={resizeHandleClassName} {...resizeHandleProps} />
+
       {/* Properties Panel (Sidebar) */}
       <div
         style={{
-          width: "320px",
+          ...rightPaneStyle,
           borderLeft: "1px solid var(--vscode-panel-border)",
           backgroundColor: "var(--vscode-sideBar-background)",
           display: "flex",
           flexDirection: "column",
-          overflow: "hidden",
+          overflowY: "auto",
+          overflowX: "hidden",
         }}
+        className="right-pane-resizable"
       >
-        {/* Execution Panel */}
-        <ExecutionPanel
-          executionState={executionState}
-          isRunning={isRunning}
-          onStart={handleStartExecution}
-          onStop={handleStopExecution}
-          onSendEvent={handleSendEvent}
-        />
+        <div
+          style={
+            {
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: "6px",
+              padding: "8px",
+              borderBottom: "1px solid var(--vscode-panel-border)",
+              position: "sticky",
+              top: 0,
+              zIndex: 3,
+              background: "var(--vscode-sideBar-background)",
+            }
+          }
+        >
+          {(["io", "settings", "tools"] as RightPaneView[]).map((view) => (
+            <button
+              key={view}
+              type="button"
+              onClick={() => setRightPaneView(view)}
+              style={{
+                border: "1px solid var(--vscode-button-border)",
+                borderRadius: "4px",
+                background:
+                  rightPaneView === view
+                    ? "var(--vscode-button-background)"
+                    : "var(--vscode-button-secondaryBackground)",
+                color:
+                  rightPaneView === view
+                    ? "var(--vscode-button-foreground)"
+                    : "var(--vscode-button-secondaryForeground)",
+                borderColor:
+                  rightPaneView === view
+                    ? "var(--vscode-focusBorder)"
+                    : "var(--vscode-button-border)",
+                padding: "5px 8px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+              aria-pressed={rightPaneView === view}
+            >
+              {view === "io" ? "I/O" : view === "settings" ? "Settings" : "Tools"}
+            </button>
+          ))}
+        </div>
 
-        {/* Properties Panel */}
-        <PropertiesPanel
-          selectedNode={selectedNode}
-          selectedEdge={selectedEdge}
-          onUpdateNode={updateNodeData}
-          onUpdateEdge={updateEdgeData}
-        />
-        {/* Action Mappings Panel */}
-        <ActionMappingsPanel
-          actionMappings={actionMappings}
-          nodes={nodes}
-          onUpdateActionMappings={updateActionMappings}
-        />
+        {rightPaneView === "tools" ? (
+          <>
+            <StatechartToolsPanel
+              canDelete={Boolean(selectedNode || selectedEdge)}
+              onAddState={handleAddState}
+              onAddInitialState={handleAddInitialState}
+              onAddFinalState={handleAddFinalState}
+              onOpenRuntimePanel={handleOpenRuntimePanel}
+              onDelete={handleDelete}
+              onAutoLayout={autoLayout}
+              onSave={handleSave}
+            />
+            <PropertiesPanel
+              selectedNode={selectedNode}
+              selectedEdge={selectedEdge}
+              onUpdateNode={updateNodeData}
+              onUpdateEdge={updateEdgeData}
+            />
+            <ActionMappingsPanel
+              actionMappings={actionMappings}
+              nodes={nodes}
+              onUpdateActionMappings={updateActionMappings}
+            />
+          </>
+        ) : (
+          <ExecutionPanel
+            activeRuntimeView={rightPaneView === "settings" ? "settings" : "io"}
+            runtimeState={runtimeState}
+            executionState={executionState}
+            onSendEvent={handleSendEvent}
+            onViewChange={setRightPaneView}
+          />
+        )}
       </div>
     </div>
   );
-};
-
-// Button style matching VSCode theme
-const buttonStyle: React.CSSProperties = {
-  padding: "6px 12px",
-  fontSize: "13px",
-  backgroundColor: "var(--vscode-button-background)",
-  color: "var(--vscode-button-foreground)",
-  border: "1px solid var(--vscode-button-border)",
-  borderRadius: "4px",
-  cursor: "pointer",
-  fontFamily: "var(--vscode-font-family)",
-  transition: "all 0.2s",
 };

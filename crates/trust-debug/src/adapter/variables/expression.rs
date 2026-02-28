@@ -7,10 +7,11 @@ use serde_json::Value;
 
 use trust_runtime::debug::DebugSnapshot;
 use trust_runtime::error::RuntimeError;
-use trust_runtime::eval::expr::{read_lvalue, write_lvalue};
+use trust_runtime::eval::expr::{read_lvalue, write_lvalue, LValue};
 use trust_runtime::harness::{coerce_value_to_type, parse_debug_expression, parse_debug_lvalue};
-use trust_runtime::memory::{FrameId, IoArea};
+use trust_runtime::memory::{FrameId, IoArea, VariableStorage};
 use trust_runtime::value::Value as RuntimeValue;
+use trust_runtime::Runtime;
 
 use crate::protocol::{
     InvalidatedEventBody, Request, SetExpressionArguments, SetExpressionResponseBody,
@@ -22,7 +23,145 @@ use super::eval::parse_value_expression;
 use super::format::type_id_for_value;
 use super::set::{parse_set_directive, SetDirective};
 
+#[derive(Clone, Copy)]
+enum SymbolicForceDirective {
+    Force,
+    Release,
+}
+
 impl DebugAdapter {
+    fn apply_symbolic_force_directive(
+        &self,
+        runtime: &Runtime,
+        target: &LValue,
+        directive: SymbolicForceDirective,
+        value: Option<RuntimeValue>,
+    ) -> Result<(), String> {
+        match target {
+            LValue::Name(name) => {
+                if runtime.storage().get_global(name.as_ref()).is_some() {
+                    match directive {
+                        SymbolicForceDirective::Force => self
+                            .session
+                            .debug_control()
+                            .force_global(name.clone(), value.ok_or("missing force value")?),
+                        SymbolicForceDirective::Release => {
+                            self.session.debug_control().release_global(name.as_ref())
+                        }
+                    }
+                    return Ok(());
+                }
+                if runtime.storage().get_retain(name.as_ref()).is_some() {
+                    match directive {
+                        SymbolicForceDirective::Force => self
+                            .session
+                            .debug_control()
+                            .force_retain(name.clone(), value.ok_or("missing force value")?),
+                        SymbolicForceDirective::Release => {
+                            self.session.debug_control().release_retain(name.as_ref())
+                        }
+                    }
+                    return Ok(());
+                }
+                Err(
+                    "force/release is only supported for globals, retains, or instance fields"
+                        .to_string(),
+                )
+            }
+            LValue::Field { name, field } => {
+                let instance_id = match runtime.storage().get_global(name.as_ref()) {
+                    Some(RuntimeValue::Instance(id)) => *id,
+                    _ => return Err(
+                        "force/release is only supported for globals, retains, or instance fields"
+                            .to_string(),
+                    ),
+                };
+                match directive {
+                    SymbolicForceDirective::Force => self.session.debug_control().force_instance(
+                        instance_id,
+                        field.clone(),
+                        value.ok_or("missing force value")?,
+                    ),
+                    SymbolicForceDirective::Release => self
+                        .session
+                        .debug_control()
+                        .release_instance(instance_id, field.as_ref()),
+                }
+                Ok(())
+            }
+            _ => Err(
+                "force/release is only supported for globals, retains, or instance fields"
+                    .to_string(),
+            ),
+        }
+    }
+
+    fn apply_symbolic_force_directive_for_storage(
+        &self,
+        storage: &VariableStorage,
+        target: &LValue,
+        directive: SymbolicForceDirective,
+        value: Option<RuntimeValue>,
+    ) -> Result<(), String> {
+        match target {
+            LValue::Name(name) => {
+                if storage.get_global(name.as_ref()).is_some() {
+                    match directive {
+                        SymbolicForceDirective::Force => self
+                            .session
+                            .debug_control()
+                            .force_global(name.clone(), value.ok_or("missing force value")?),
+                        SymbolicForceDirective::Release => {
+                            self.session.debug_control().release_global(name.as_ref())
+                        }
+                    }
+                    return Ok(());
+                }
+                if storage.get_retain(name.as_ref()).is_some() {
+                    match directive {
+                        SymbolicForceDirective::Force => self
+                            .session
+                            .debug_control()
+                            .force_retain(name.clone(), value.ok_or("missing force value")?),
+                        SymbolicForceDirective::Release => {
+                            self.session.debug_control().release_retain(name.as_ref())
+                        }
+                    }
+                    return Ok(());
+                }
+                Err(
+                    "force/release is only supported for globals, retains, or instance fields"
+                        .to_string(),
+                )
+            }
+            LValue::Field { name, field } => {
+                let instance_id = match storage.get_global(name.as_ref()) {
+                    Some(RuntimeValue::Instance(id)) => *id,
+                    _ => return Err(
+                        "force/release is only supported for globals, retains, or instance fields"
+                            .to_string(),
+                    ),
+                };
+                match directive {
+                    SymbolicForceDirective::Force => self.session.debug_control().force_instance(
+                        instance_id,
+                        field.clone(),
+                        value.ok_or("missing force value")?,
+                    ),
+                    SymbolicForceDirective::Release => self
+                        .session
+                        .debug_control()
+                        .release_instance(instance_id, field.as_ref()),
+                }
+                Ok(())
+            }
+            _ => Err(
+                "force/release is only supported for globals, retains, or instance fields"
+                    .to_string(),
+            ),
+        }
+    }
+
     pub(in crate::adapter) fn handle_set_expression(
         &mut self,
         request: Request<Value>,
@@ -180,14 +319,6 @@ impl DebugAdapter {
             };
         }
 
-        if matches!(directive, SetDirective::Release | SetDirective::Force(_)) {
-            return DispatchOutcome {
-                responses: vec![self
-                    .error_response(&request, "force/release is not supported for setExpression")],
-                ..DispatchOutcome::default()
-            };
-        }
-
         let using = frame_id
             .and_then(|frame_id| runtime.using_for_frame(frame_id))
             .unwrap_or_default();
@@ -197,19 +328,6 @@ impl DebugAdapter {
             Err(message) => {
                 return DispatchOutcome {
                     responses: vec![self.error_response(&request, &message.to_string())],
-                    ..DispatchOutcome::default()
-                };
-            }
-        };
-        let raw = match directive {
-            SetDirective::Write(raw) => raw,
-            _ => unreachable!(),
-        };
-        let value = match parse_value_expression(&mut runtime, &raw, frame_id) {
-            Ok(value) => value,
-            Err(message) => {
-                return DispatchOutcome {
-                    responses: vec![self.error_response(&request, &message)],
                     ..DispatchOutcome::default()
                 };
             }
@@ -237,23 +355,64 @@ impl DebugAdapter {
                 ..DispatchOutcome::default()
             };
         };
-        let coerced = match coerce_value_to_type(value, type_id) {
-            Ok(value) => value,
-            Err(err) => {
-                return DispatchOutcome {
-                    responses: vec![self.error_response(&request, &err.to_string())],
-                    ..DispatchOutcome::default()
+        let final_value = match directive {
+            SetDirective::Release => {
+                if let Err(message) = self.apply_symbolic_force_directive(
+                    &runtime,
+                    &target,
+                    SymbolicForceDirective::Release,
+                    None,
+                ) {
+                    return DispatchOutcome {
+                        responses: vec![self.error_response(&request, &message)],
+                        ..DispatchOutcome::default()
+                    };
+                }
+                current
+            }
+            SetDirective::Write(ref raw) | SetDirective::Force(ref raw) => {
+                let value = match parse_value_expression(&mut runtime, raw, frame_id) {
+                    Ok(value) => value,
+                    Err(message) => {
+                        return DispatchOutcome {
+                            responses: vec![self.error_response(&request, &message)],
+                            ..DispatchOutcome::default()
+                        };
+                    }
                 };
+                let coerced = match coerce_value_to_type(value, type_id) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return DispatchOutcome {
+                            responses: vec![self.error_response(&request, &err.to_string())],
+                            ..DispatchOutcome::default()
+                        };
+                    }
+                };
+                if let Err(err) = runtime.with_eval_context(frame_id, using_ref, |ctx| {
+                    write_lvalue(ctx, &target, coerced.clone())
+                }) {
+                    return DispatchOutcome {
+                        responses: vec![self.error_response(&request, &map_runtime_error(err))],
+                        ..DispatchOutcome::default()
+                    };
+                }
+                if matches!(directive, SetDirective::Force(_)) {
+                    if let Err(message) = self.apply_symbolic_force_directive(
+                        &runtime,
+                        &target,
+                        SymbolicForceDirective::Force,
+                        Some(coerced.clone()),
+                    ) {
+                        return DispatchOutcome {
+                            responses: vec![self.error_response(&request, &message)],
+                            ..DispatchOutcome::default()
+                        };
+                    }
+                }
+                coerced
             }
         };
-        if let Err(err) = runtime.with_eval_context(frame_id, using_ref, |ctx| {
-            write_lvalue(ctx, &target, coerced.clone())
-        }) {
-            return DispatchOutcome {
-                responses: vec![self.error_response(&request, &map_runtime_error(err))],
-                ..DispatchOutcome::default()
-            };
-        }
 
         if paused {
             let using = refresh_frame
@@ -274,7 +433,7 @@ impl DebugAdapter {
             ));
         }
 
-        let variable = self.variable_from_value("result".to_string(), coerced, None);
+        let variable = self.variable_from_value("result".to_string(), final_value, None);
         let body = SetExpressionResponseBody {
             value: variable.value,
             r#type: variable.r#type,
@@ -400,14 +559,6 @@ impl DebugAdapter {
             };
         }
 
-        if matches!(directive, SetDirective::Release | SetDirective::Force(_)) {
-            return DispatchOutcome {
-                responses: vec![self
-                    .error_response(&request, "force/release is not supported for setExpression")],
-                ..DispatchOutcome::default()
-            };
-        }
-
         let profile = self.session.metadata().profile();
         let mut registry = self.session.metadata().registry().clone();
         let target = match parse_debug_lvalue(expr_text, &mut registry, profile, &using) {
@@ -419,34 +570,6 @@ impl DebugAdapter {
                 };
             }
         };
-        let raw = match directive {
-            SetDirective::Write(raw) => raw,
-            _ => unreachable!(),
-        };
-        let expr = match parse_debug_expression(&raw, &mut registry, profile, &using) {
-            Ok(expr) => expr,
-            Err(err) => {
-                return DispatchOutcome {
-                    responses: vec![self.error_response(&request, &err.to_string())],
-                    ..DispatchOutcome::default()
-                };
-            }
-        };
-        let value = match self.evaluate_with_snapshot(&expr, &registry, frame_id, &snapshot, &using)
-        {
-            Ok(value) => value,
-            Err(err) => {
-                let message = match err {
-                    RuntimeError::InvalidFrame(_) => "unknown frame id".to_string(),
-                    _ => err.to_string(),
-                };
-                return DispatchOutcome {
-                    responses: vec![self.error_response(&request, &message)],
-                    ..DispatchOutcome::default()
-                };
-            }
-        };
-
         let map_runtime_error = |err: RuntimeError| match err {
             RuntimeError::InvalidFrame(_) => "unknown frame id".to_string(),
             _ => err.to_string(),
@@ -479,34 +602,137 @@ impl DebugAdapter {
                 ..DispatchOutcome::default()
             };
         };
-        let coerced = match coerce_value_to_type(value, type_id) {
-            Ok(value) => value,
-            Err(err) => {
-                return DispatchOutcome {
-                    responses: vec![self.error_response(&request, &err.to_string())],
-                    ..DispatchOutcome::default()
+        let final_value = match directive {
+            SetDirective::Release => {
+                if let Err(message) = self.apply_symbolic_force_directive_for_storage(
+                    &snapshot.storage,
+                    &target_clone,
+                    SymbolicForceDirective::Release,
+                    None,
+                ) {
+                    return DispatchOutcome {
+                        responses: vec![self.error_response(&request, &message)],
+                        ..DispatchOutcome::default()
+                    };
+                }
+                current
+            }
+            SetDirective::Write(raw) => {
+                let expr = match parse_debug_expression(&raw, &mut registry, profile, &using) {
+                    Ok(expr) => expr,
+                    Err(err) => {
+                        return DispatchOutcome {
+                            responses: vec![self.error_response(&request, &err.to_string())],
+                            ..DispatchOutcome::default()
+                        };
+                    }
                 };
+                let value =
+                    match self.evaluate_with_snapshot(&expr, &registry, frame_id, &snapshot, &using)
+                    {
+                        Ok(value) => value,
+                        Err(err) => {
+                            let message = match err {
+                                RuntimeError::InvalidFrame(_) => "unknown frame id".to_string(),
+                                _ => err.to_string(),
+                            };
+                            return DispatchOutcome {
+                                responses: vec![self.error_response(&request, &message)],
+                                ..DispatchOutcome::default()
+                            };
+                        }
+                    };
+                let coerced = match coerce_value_to_type(value, type_id) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return DispatchOutcome {
+                            responses: vec![self.error_response(&request, &err.to_string())],
+                            ..DispatchOutcome::default()
+                        };
+                    }
+                };
+
+                let write_result = self.session.debug_control().with_snapshot(|snapshot| {
+                    self.with_snapshot_eval(snapshot, frame_id, &using, &registry, |ctx| {
+                        write_lvalue(ctx, &target_clone, coerced.clone())
+                    })
+                });
+                if let Some(Err(err)) = write_result {
+                    return DispatchOutcome {
+                        responses: vec![self.error_response(&request, &map_runtime_error(err))],
+                        ..DispatchOutcome::default()
+                    };
+                }
+
+                self.session.debug_control().enqueue_lvalue_write(
+                    frame_id,
+                    using.clone(),
+                    target_clone.clone(),
+                    coerced.clone(),
+                );
+                coerced
+            }
+            SetDirective::Force(raw) => {
+                let expr = match parse_debug_expression(&raw, &mut registry, profile, &using) {
+                    Ok(expr) => expr,
+                    Err(err) => {
+                        return DispatchOutcome {
+                            responses: vec![self.error_response(&request, &err.to_string())],
+                            ..DispatchOutcome::default()
+                        };
+                    }
+                };
+                let value =
+                    match self.evaluate_with_snapshot(&expr, &registry, frame_id, &snapshot, &using)
+                    {
+                        Ok(value) => value,
+                        Err(err) => {
+                            let message = match err {
+                                RuntimeError::InvalidFrame(_) => "unknown frame id".to_string(),
+                                _ => err.to_string(),
+                            };
+                            return DispatchOutcome {
+                                responses: vec![self.error_response(&request, &message)],
+                                ..DispatchOutcome::default()
+                            };
+                        }
+                    };
+                let coerced = match coerce_value_to_type(value, type_id) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return DispatchOutcome {
+                            responses: vec![self.error_response(&request, &err.to_string())],
+                            ..DispatchOutcome::default()
+                        };
+                    }
+                };
+
+                let write_result = self.session.debug_control().with_snapshot(|snapshot| {
+                    self.with_snapshot_eval(snapshot, frame_id, &using, &registry, |ctx| {
+                        write_lvalue(ctx, &target_clone, coerced.clone())
+                    })
+                });
+                if let Some(Err(err)) = write_result {
+                    return DispatchOutcome {
+                        responses: vec![self.error_response(&request, &map_runtime_error(err))],
+                        ..DispatchOutcome::default()
+                    };
+                }
+
+                if let Err(message) = self.apply_symbolic_force_directive_for_storage(
+                    &snapshot.storage,
+                    &target_clone,
+                    SymbolicForceDirective::Force,
+                    Some(coerced.clone()),
+                ) {
+                    return DispatchOutcome {
+                        responses: vec![self.error_response(&request, &message)],
+                        ..DispatchOutcome::default()
+                    };
+                }
+                coerced
             }
         };
-
-        let write_result = self.session.debug_control().with_snapshot(|snapshot| {
-            self.with_snapshot_eval(snapshot, frame_id, &using, &registry, |ctx| {
-                write_lvalue(ctx, &target_clone, coerced.clone())
-            })
-        });
-        if let Some(Err(err)) = write_result {
-            return DispatchOutcome {
-                responses: vec![self.error_response(&request, &map_runtime_error(err))],
-                ..DispatchOutcome::default()
-            };
-        }
-
-        self.session.debug_control().enqueue_lvalue_write(
-            frame_id,
-            using.clone(),
-            target_clone,
-            coerced.clone(),
-        );
         events.push(self.event(
             "invalidated",
             Some(InvalidatedEventBody {
@@ -516,7 +742,7 @@ impl DebugAdapter {
             }),
         ));
 
-        let variable = self.variable_from_value("result".to_string(), coerced, None);
+        let variable = self.variable_from_value("result".to_string(), final_value, None);
         let body = SetExpressionResponseBody {
             value: variable.value,
             r#type: variable.r#type,
