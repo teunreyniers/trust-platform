@@ -2,7 +2,7 @@ mod common;
 
 use std::sync::mpsc::channel;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use trust_hir::types::TypeRegistry;
 use trust_runtime::debug::{
@@ -16,6 +16,17 @@ use trust_runtime::harness::TestHarness;
 use trust_runtime::memory::VariableStorage;
 use trust_runtime::value::{DateTimeProfile, Value};
 use trust_runtime::Runtime;
+
+fn wait_for_pause(control: &DebugControl, timeout: Duration) {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if control.is_paused() {
+            return;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+    panic!("timed out waiting for debugger to enter paused mode");
+}
 
 #[test]
 fn step_once_pauses_again() {
@@ -55,11 +66,11 @@ fn breakpoint_pauses_execution() {
         tx.send(()).unwrap();
     });
 
-    thread::sleep(Duration::from_millis(50));
-    assert!(rx.recv_timeout(Duration::from_millis(100)).is_err());
+    wait_for_pause(&control, Duration::from_secs(2));
+    assert!(rx.try_recv().is_err());
 
     control.continue_run();
-    rx.recv_timeout(Duration::from_millis(250)).unwrap();
+    rx.recv_timeout(Duration::from_secs(2)).unwrap();
     handle.join().unwrap();
 }
 
@@ -482,11 +493,11 @@ fn conditional_breakpoint_pauses_when_true() {
         tx.send(()).unwrap();
     });
 
-    thread::sleep(Duration::from_millis(50));
-    assert!(rx.recv_timeout(Duration::from_millis(100)).is_err());
+    wait_for_pause(&control, Duration::from_secs(2));
+    assert!(rx.try_recv().is_err());
 
     control.continue_run();
-    rx.recv_timeout(Duration::from_millis(250)).unwrap();
+    rx.recv_timeout(Duration::from_secs(2)).unwrap();
     handle.join().unwrap();
 }
 

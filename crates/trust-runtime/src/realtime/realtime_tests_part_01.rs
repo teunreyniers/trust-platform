@@ -85,6 +85,26 @@
 
     #[test]
     fn t0_shm_header_fuzz_rejects_corruption_budget() {
+        fn overwrite_mapping(path: &std::path::Path, bytes: &[u8]) {
+            use std::io::{Seek, SeekFrom, Write};
+
+            let mut file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(path)
+                .expect("open shm mapping for in-place mutation");
+            let file_len = file.metadata().expect("stat shm mapping length").len() as usize;
+            assert_eq!(
+                file_len,
+                bytes.len(),
+                "test mutation must preserve mapping length"
+            );
+            file.seek(SeekFrom::Start(0))
+                .expect("seek to shm mapping start");
+            file.write_all(bytes).expect("write shm mapping bytes");
+            file.flush().expect("flush shm mapping bytes");
+        }
+
         fn next(state: &mut u64) -> u64 {
             *state = state
                 .wrapping_mul(6364136223846793005)
@@ -112,6 +132,8 @@
                 .clone(),
         );
         let original = std::fs::read(&mapping_path).expect("read shm mapping");
+        // Windows denies truncating/replacing a file while a mapped section is open.
+        drop(producer);
 
         let mut rng = 0xF00D_CAFE_1234_5678_u64;
         let header_offsets = [0_usize, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80];
@@ -121,7 +143,7 @@
             let index = header_offsets[(next(&mut rng) as usize) % header_offsets.len()];
             let mask = (next(&mut rng) as u8) | 1;
             mutated[index] ^= mask;
-            std::fs::write(&mapping_path, &mutated).expect("write mutated shm header");
+            overwrite_mapping(&mapping_path, &mutated);
 
             let mut consumer = T0Transport::with_config(T0ShmConfig::with_root(root_path.clone()));
             let err = consumer
@@ -130,7 +152,7 @@
             assert_eq!(err.code, T0ErrorCode::TransportFailure);
         }
 
-        std::fs::write(&mapping_path, &original).expect("restore shm mapping");
+        overwrite_mapping(&mapping_path, &original);
         let _ = std::fs::remove_dir_all(root_path);
     }
 
@@ -158,4 +180,3 @@
             serde_json::from_str(&payload_json).expect("decode readiness json");
         assert!(payload.is_array());
     }
-

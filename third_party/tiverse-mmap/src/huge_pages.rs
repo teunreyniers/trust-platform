@@ -57,14 +57,6 @@ impl HugePageSize {
         }
     }
 
-    /// Convert to macOS VM_FLAGS_SUPERPAGE_SIZE_*
-    #[cfg(target_os = "macos")]
-    pub(crate) fn to_macos_flags(self) -> libc::c_int {
-        match self {
-            Self::Size2MB => 0x00020000, // VM_FLAGS_SUPERPAGE_SIZE_2MB
-            Self::Size1GB => 0,          // Not supported on macOS
-        }
-    }
 }
 
 impl Default for HugePageSize {
