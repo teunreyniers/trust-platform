@@ -13,6 +13,8 @@ impl Runtime {
             stdlib: StandardLibrary::new(),
             debug: None,
             statement_index: IndexMap::new(),
+            source_text_index: IndexMap::new(),
+            source_label_index: std::collections::HashMap::new(),
             functions: IndexMap::new(),
             function_blocks: IndexMap::new(),
             classes: IndexMap::new(),
@@ -140,6 +142,7 @@ impl Runtime {
     /// Attach a metrics sink for runtime statistics.
     pub fn set_metrics_sink(&mut self, metrics: std::sync::Arc<std::sync::Mutex<RuntimeMetrics>>) {
         self.metrics.set_sink(metrics);
+        self.metrics.set_execution_backend(self.execution_backend);
     }
 
     /// Update retain save interval without changing the backend.

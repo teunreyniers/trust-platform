@@ -3,6 +3,7 @@ use std::time::Instant;
 use smol_str::SmolStr;
 
 use crate::bytecode::{TypeData, TypeTable};
+use crate::debug::DebugHook;
 use crate::error::RuntimeError;
 use crate::eval::ops::{apply_binary, apply_unary, BinaryOp, UnaryOp};
 use crate::memory::{FrameId, InstanceId, MemoryLocation};
@@ -90,11 +91,11 @@ fn execute_pou(
             break;
         }
 
-        let (frame_start, frame_end) = {
+        let (frame_pou_id, frame_start, frame_end) = {
             let frame = frames
                 .current()
                 .ok_or_else(|| VmTrap::CallStackUnderflow.into_runtime_error())?;
-            (frame.code_start, frame.code_end)
+            (frame.pou_id, frame.code_start, frame.code_end)
         };
 
         if pc == frame_end {
@@ -117,6 +118,13 @@ fn execute_pou(
 
         if deadline_exceeded(runtime.execution_deadline) {
             return Err(VmTrap::DeadlineExceeded.into_runtime_error());
+        }
+
+        if let Some(location) = vm_statement_location(runtime, module, frame_pou_id, pc) {
+            if let Some(debug) = runtime.debug.as_mut() {
+                let call_depth = frames.len().saturating_sub(1) as u32;
+                debug.on_statement(Some(&location), call_depth);
+            }
         }
 
         let opcode = module
@@ -394,6 +402,16 @@ fn deadline_exceeded(deadline: Option<Instant>) -> bool {
         Some(deadline) => Instant::now() >= deadline,
         None => false,
     }
+}
+
+fn vm_statement_location(
+    runtime: &Runtime,
+    module: &VmModule,
+    pou_id: u32,
+    pc: usize,
+) -> Option<crate::debug::SourceLocation> {
+    let source = module.debug_map.source_by_pc.get(&(pou_id, pc as u32))?;
+    runtime.resolve_vm_debug_location(source.file.as_str(), source.line, source.column)
 }
 
 fn execute_unary(stack: &mut OperandStack, op: UnaryOp) -> Result<(), VmTrap> {

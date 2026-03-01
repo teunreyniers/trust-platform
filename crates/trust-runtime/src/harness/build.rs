@@ -271,7 +271,13 @@ pub(super) fn build_runtime_from_source_files(
     let _ = runtime.ensure_background_thread_id();
 
     for (idx, locations) in statement_locations.into_iter().enumerate() {
-        runtime.register_statement_locations(file_ids[idx].0, locations);
+        let file_id = file_ids[idx].0;
+        runtime.register_statement_locations(file_id, locations);
+        runtime.register_source_text(file_id, sources[idx].text.clone());
+        runtime.register_source_label(file_id, format!("file_{file_id}"));
+        if let Some(path) = sources[idx].path.as_deref() {
+            runtime.register_source_label(file_id, path);
+        }
     }
 
     Ok(runtime)

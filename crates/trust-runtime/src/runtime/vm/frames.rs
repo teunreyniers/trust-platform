@@ -7,7 +7,6 @@ const MAX_CALL_DEPTH: usize = 1024;
 
 #[derive(Debug, Clone)]
 pub(super) struct VmFrame {
-    #[allow(dead_code)] // Reserved for pc->source mapping and debug events in later parity phases.
     pub(super) pou_id: u32,
     pub(super) return_pc: usize,
     pub(super) code_start: usize,
@@ -85,5 +84,9 @@ impl FrameStack {
 
     pub(super) fn is_empty(&self) -> bool {
         self.frames.is_empty()
+    }
+
+    pub(super) fn len(&self) -> usize {
+        self.frames.len()
     }
 }

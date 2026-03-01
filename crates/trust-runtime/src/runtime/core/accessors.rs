@@ -115,6 +115,7 @@ impl Runtime {
     ) -> Result<(), error::RuntimeError> {
         super::backend::validate_backend_selection(self, backend)?;
         self.execution_backend = backend;
+        self.metrics.set_execution_backend(backend);
         Ok(())
     }
 

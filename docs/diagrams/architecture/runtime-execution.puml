@@ -24,6 +24,8 @@ package "Runtime Core" as runtimeCore #LightGreen {
         stdlib: StandardLibrary
         debug: Option<DebugControl>
         statement_index: IndexMap
+        source_text_index: IndexMap
+        source_label_index: HashMap
         metrics: MetricsSubsystem
         watchdog: WatchdogSubsystem
         faults: FaultSubsystem
@@ -58,11 +60,11 @@ package "Execution Backend Boundary" as backendPkg #LightYellow {
     runtime ..> backendContract : program/FB dispatch
 
     package "Bytecode VM Core\n(runtime/vm/*)" as vmCore #LightCyan {
-        component "dispatch.rs\n(PC loop + op dispatch)" as vmDispatch
+        component "dispatch.rs\n(PC loop + op dispatch + debug hook emit)" as vmDispatch
         component "stack.rs\n(operand stack invariants)" as vmStack
         component "frames.rs + call.rs\n(frame stack + CALL_NATIVE dispatch bridge)" as vmFrames
         component "errors.rs\n(trap -> RuntimeError)" as vmErrors
-        component "debug_map.rs\n(symbol/source mappings)" as vmDebugMap
+        component "debug_map.rs\n(symbol/source mappings + pc->source)" as vmDebugMap
     }
 
     vmBackend --> vmDispatch
@@ -70,6 +72,7 @@ package "Execution Backend Boundary" as backendPkg #LightYellow {
     vmDispatch ..> vmFrames
     vmDispatch ..> vmErrors
     vmDispatch ..> vmDebugMap
+    vmDispatch ..> runtime : resolve vm debug source labels/offsets
 }
 
 ' ============================================================

@@ -17,6 +17,7 @@ use crate::watchdog::{FaultDecision, FaultPolicy, WatchdogPolicy};
 use crate::{error, eval, stdlib};
 use indexmap::IndexMap;
 use smol_str::SmolStr;
+use std::collections::HashMap;
 use std::sync::Arc;
 use trust_hir::types::TypeRegistry;
 use trust_hir::Type;
@@ -40,6 +41,8 @@ pub struct Runtime {
     pub(super) stdlib: StandardLibrary,
     pub(super) debug: Option<DebugControl>,
     pub(super) statement_index: IndexMap<u32, Vec<crate::debug::SourceLocation>>,
+    pub(super) source_text_index: IndexMap<u32, String>,
+    pub(super) source_label_index: HashMap<SmolStr, u32>,
     pub(super) functions: IndexMap<SmolStr, FunctionDef>,
     pub(super) function_blocks: IndexMap<SmolStr, FunctionBlockDef>,
     pub(super) classes: IndexMap<SmolStr, ClassDef>,
