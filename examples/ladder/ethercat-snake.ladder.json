@@ -789,8 +789,6 @@
   "metadata": {
     "name": "ethercat-snake",
     "description": "Snake/Rider effect for EL2008 - Sequential state machine that lights LEDs 0→7 in order, then restarts. Uses SET/RESET coils for state control.",
-    "hardware": "Beckhoff EL2008 (8-channel digital output)",
-    "pattern": "0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → restart",
-    "note": "Requires ladder interpreter with scan cycle to execute the sequential logic"
+    "modified": "2026-03-01T11:34:16.698Z"
   }
 }
