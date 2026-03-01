@@ -104,3 +104,5 @@ mod bytecode_encoder_part_03;
 mod bytecode_encoder_part_04;
 #[path = "bytecode_encoder/bytecode_encoder_part_05.rs"]
 mod bytecode_encoder_part_05;
+#[path = "bytecode_encoder/bytecode_encoder_part_06.rs"]
+mod bytecode_encoder_part_06;

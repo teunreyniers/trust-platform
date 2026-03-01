@@ -10,7 +10,7 @@ use crate::io::IoAddress;
 use crate::task::ProgramDef;
 use crate::value::DateTimeProfile;
 
-use super::super::lower::{lower_expr, lower_stmt_list};
+use super::super::lower::{eval_const_expr, lower_expr, lower_stmt_list};
 use super::super::types::CompileError;
 use super::super::util::{collect_using_directives, node_text};
 use super::model::{GlobalInit, LoweredProgram, LoweringContext, ProgramVars};

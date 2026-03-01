@@ -6,7 +6,9 @@ use crate::task::ProgramDef;
 use crate::value::Duration;
 use trust_syntax::syntax::{SyntaxKind, SyntaxNode};
 
-use super::super::lower::{const_duration_from_node, const_int_from_node, lower_expr};
+use super::super::lower::{
+    const_duration_from_node, const_int_from_node, eval_const_expr, lower_expr,
+};
 use super::super::types::CompileError;
 use super::super::util::{
     collect_using_directives, extract_name_from_expr, is_expression_kind, node_text,

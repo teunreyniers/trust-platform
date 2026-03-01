@@ -40,6 +40,7 @@ pub(crate) fn lower_functions(
             using,
             file_id,
             statement_locations,
+            const_values: std::collections::HashMap::new(),
         };
         functions.push(lower_function_node(&func_node, &mut ctx)?);
     }
@@ -65,6 +66,7 @@ pub(crate) fn lower_function_blocks(
             using,
             file_id,
             statement_locations,
+            const_values: std::collections::HashMap::new(),
         };
         function_blocks.push(lower_function_block_node(&fb_node, &mut ctx)?);
     }
@@ -90,6 +92,7 @@ pub(crate) fn lower_classes(
             using,
             file_id,
             statement_locations,
+            const_values: std::collections::HashMap::new(),
         };
         classes.push(lower_class_node(&class_node, &mut ctx)?);
     }
@@ -115,6 +118,7 @@ pub(crate) fn lower_interfaces(
             using,
             file_id,
             statement_locations,
+            const_values: std::collections::HashMap::new(),
         };
         interfaces.push(lower_interface_node(&interface_node, &mut ctx)?);
     }

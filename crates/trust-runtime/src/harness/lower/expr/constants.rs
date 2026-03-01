@@ -33,28 +33,7 @@ pub(in crate::harness) fn const_int_from_node(
     ctx: &mut LoweringContext<'_>,
 ) -> Result<i64, CompileError> {
     let expr = lower_expr(node, ctx)?;
-    let mut storage = VariableStorage::default();
-    let mut eval_ctx = EvalContext {
-        storage: &mut storage,
-        registry: ctx.registry,
-        profile: ctx.profile,
-        now: Duration::ZERO,
-        debug: None,
-        call_depth: 0,
-        functions: None,
-        stdlib: None,
-        function_blocks: None,
-        classes: None,
-        using: Some(&ctx.using),
-        access: None,
-        current_instance: None,
-        return_name: None,
-        loop_depth: 0,
-        pause_requested: false,
-        execution_deadline: None,
-    };
-    let value =
-        eval_expr(&mut eval_ctx, &expr).map_err(|err| CompileError::new(err.to_string()))?;
+    let value = eval_const_expr(&expr, ctx)?;
     match value {
         Value::SInt(v) => Ok(v as i64),
         Value::Int(v) => Ok(v as i64),
@@ -77,12 +56,15 @@ pub(in crate::harness) fn const_int_from_node(
     }
 }
 
-pub(in crate::harness) fn const_duration_from_node(
-    node: &SyntaxNode,
-    ctx: &mut LoweringContext<'_>,
-) -> Result<Duration, CompileError> {
-    let expr = lower_expr(node, ctx)?;
+pub(in crate::harness) fn eval_const_expr(
+    expr: &Expr,
+    ctx: &LoweringContext<'_>,
+) -> Result<Value, CompileError> {
     let mut storage = VariableStorage::default();
+    let _frame = storage.push_frame("__const");
+    for (name, value) in ctx.const_values.iter() {
+        storage.set_local(name.clone(), value.clone());
+    }
     let mut eval_ctx = EvalContext {
         storage: &mut storage,
         registry: ctx.registry,
@@ -102,8 +84,15 @@ pub(in crate::harness) fn const_duration_from_node(
         pause_requested: false,
         execution_deadline: None,
     };
-    let value =
-        eval_expr(&mut eval_ctx, &expr).map_err(|err| CompileError::new(err.to_string()))?;
+    eval_expr(&mut eval_ctx, expr).map_err(|err| CompileError::new(err.to_string()))
+}
+
+pub(in crate::harness) fn const_duration_from_node(
+    node: &SyntaxNode,
+    ctx: &mut LoweringContext<'_>,
+) -> Result<Duration, CompileError> {
+    let expr = lower_expr(node, ctx)?;
+    let value = eval_const_expr(&expr, ctx)?;
     match value {
         Value::Time(duration) | Value::LTime(duration) => Ok(duration),
         _ => Err(CompileError::new("expected TIME/INTERVAL constant")),

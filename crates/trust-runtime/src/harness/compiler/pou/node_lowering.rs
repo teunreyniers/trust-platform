@@ -13,6 +13,7 @@ fn lower_program_node(
         using,
         file_id,
         statement_locations,
+        const_values: std::collections::HashMap::new(),
     };
     let vars = lower_program_var_blocks(program_node, &mut ctx)?;
     let body = lower_stmt_list(program_node, &mut ctx)?;
@@ -198,6 +199,7 @@ fn lower_method_node(
         using,
         file_id: ctx.file_id,
         statement_locations: ctx.statement_locations,
+        const_values: ctx.const_values.clone(),
     };
 
     let return_type = node

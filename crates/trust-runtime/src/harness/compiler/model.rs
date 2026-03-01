@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use smol_str::SmolStr;
 
 use crate::debug::SourceLocation;
@@ -6,7 +8,7 @@ use crate::eval::VarDef;
 use crate::io::IoAddress;
 use crate::memory::IoArea;
 use crate::task::ProgramDef;
-use crate::value::DateTimeProfile;
+use crate::value::{DateTimeProfile, Value};
 use trust_hir::TypeId;
 
 pub(crate) struct LoweredProgram {
@@ -102,4 +104,12 @@ pub(crate) struct LoweringContext<'a> {
     pub(crate) using: Vec<SmolStr>,
     pub(crate) file_id: u32,
     pub(crate) statement_locations: &'a mut Vec<SourceLocation>,
+    pub(crate) const_values: HashMap<SmolStr, Value>,
+}
+
+impl<'a> LoweringContext<'a> {
+    pub(crate) fn register_const(&mut self, name: &str, value: Value) {
+        let key = SmolStr::new(name);
+        self.const_values.insert(key, value);
+    }
 }

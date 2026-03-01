@@ -18,6 +18,15 @@ fn lower_function_block_var_blocks(
             let (names, type_ref, initializer, address) = parse_var_decl(&var_decl)?;
             let type_id = lower_type_ref(&type_ref, ctx)?;
             let init_expr = initializer.map(|expr| lower_expr(&expr, ctx)).transpose()?;
+            if qualifiers.constant {
+                if let Some(expr) = &init_expr {
+                    if let Ok(value) = eval_const_expr(expr, ctx) {
+                        for name in &names {
+                            ctx.register_const(name.as_str(), value.clone());
+                        }
+                    }
+                }
+            }
             let address_info = address
                 .as_ref()
                 .map(|text| IoAddress::parse(text))

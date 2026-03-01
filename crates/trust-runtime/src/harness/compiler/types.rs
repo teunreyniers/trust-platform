@@ -99,6 +99,7 @@ fn lower_type_decl_node(
         using,
         file_id,
         statement_locations,
+        const_values: std::collections::HashMap::new(),
     };
     let mut pending_name: Option<SmolStr> = None;
     for child in node.children() {

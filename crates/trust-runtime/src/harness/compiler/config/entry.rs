@@ -25,6 +25,7 @@ pub(crate) fn lower_configuration(
         using,
         file_id,
         statement_locations,
+        const_values: std::collections::HashMap::new(),
     };
     let mut globals = Vec::new();
     let mut tasks = Vec::new();
