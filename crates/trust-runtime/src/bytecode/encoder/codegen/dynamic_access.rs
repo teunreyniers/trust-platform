@@ -14,16 +14,18 @@ impl<'a> BytecodeEncoder<'a> {
             code.truncate(start_len);
             return Ok(false);
         }
-        let reference = match self.resolve_lvalue_ref(ctx, target)? {
-            Some(reference) => reference,
-            None => {
-                code.truncate(start_len);
-                return Ok(false);
-            }
-        };
-        let ref_idx = self.ref_index_for(&reference)?;
-        code.push(0x21);
-        code.extend_from_slice(&ref_idx.to_le_bytes());
+        if let Some(reference) = self.resolve_lvalue_ref(ctx, target)? {
+            let ref_idx = self.ref_index_for(&reference)?;
+            code.push(0x21);
+            code.extend_from_slice(&ref_idx.to_le_bytes());
+            return Ok(true);
+        }
+        if !self.emit_dynamic_ref_for_lvalue(ctx, target, code)? {
+            code.truncate(start_len);
+            return Ok(false);
+        }
+        code.push(0x13); // SWAP
+        code.push(0x33); // STORE
         Ok(true)
     }
 
@@ -59,9 +61,9 @@ impl<'a> BytecodeEncoder<'a> {
     ) -> Result<bool, BytecodeError> {
         use crate::eval::expr::LValue;
         match target {
-            LValue::Name(name) => self.emit_self_field_ref(ctx, name, code),
+            LValue::Name(name) => self.emit_ref_for_name(ctx, name, code),
             LValue::Field { name, field } => {
-                if !self.emit_self_field_ref(ctx, name, code)? {
+                if !self.emit_ref_for_name(ctx, name, code)? {
                     return Ok(false);
                 }
                 let field_idx = self.strings.intern(field.clone());
@@ -70,7 +72,7 @@ impl<'a> BytecodeEncoder<'a> {
                 Ok(true)
             }
             LValue::Index { name, indices } => {
-                if !self.emit_self_field_ref(ctx, name, code)? {
+                if !self.emit_ref_for_name(ctx, name, code)? {
                     return Ok(false);
                 }
                 for index in indices {
@@ -81,7 +83,7 @@ impl<'a> BytecodeEncoder<'a> {
                 }
                 Ok(true)
             }
-            LValue::Deref(_) => Ok(false),
+            LValue::Deref(expr) => self.emit_expr(ctx, expr, code),
         }
     }
 
@@ -163,6 +165,25 @@ impl<'a> BytecodeEncoder<'a> {
             return Ok(false);
         }
         code.push(0x32);
+        Ok(true)
+    }
+
+    fn emit_ref_for_name(
+        &mut self,
+        ctx: &CodegenContext,
+        name: &SmolStr,
+        code: &mut Vec<u8>,
+    ) -> Result<bool, BytecodeError> {
+        if ctx.local_ref(name).is_none() && self.emit_self_field_ref(ctx, name, code)? {
+            return Ok(true);
+        }
+        let reference = match self.resolve_name_ref(ctx, name)? {
+            Some(reference) => reference,
+            None => return Ok(false),
+        };
+        let ref_idx = self.ref_index_for(&reference)?;
+        code.push(0x22);
+        code.extend_from_slice(&ref_idx.to_le_bytes());
         Ok(true)
     }
 

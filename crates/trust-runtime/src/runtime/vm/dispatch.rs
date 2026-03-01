@@ -6,7 +6,7 @@ use crate::error::RuntimeError;
 use crate::eval::ops::{apply_binary, apply_unary, BinaryOp, UnaryOp};
 use crate::memory::{FrameId, InstanceId, MemoryLocation};
 use crate::task::ProgramDef;
-use crate::value::{Value, ValueRef};
+use crate::value::{RefSegment, Value, ValueRef};
 
 use super::super::core::Runtime;
 use super::call::{execute_native_call, push_call_frame, VM_LOCAL_SENTINEL_FRAME_ID};
@@ -269,10 +269,54 @@ fn execute_pou(
                     .push(Value::Instance(super_instance))
                     .map_err(VmTrap::into_runtime_error)?;
             }
-            0x30 => return Err(VmTrap::UnsupportedOpcode("REF_FIELD").into_runtime_error()),
-            0x31 => return Err(VmTrap::UnsupportedOpcode("REF_INDEX").into_runtime_error()),
-            0x32 => return Err(VmTrap::UnsupportedOpcode("LOAD_DYNAMIC").into_runtime_error()),
-            0x33 => return Err(VmTrap::UnsupportedOpcode("STORE_DYNAMIC").into_runtime_error()),
+            0x30 => {
+                let field_idx =
+                    read_u32(&module.code, &mut pc).map_err(VmTrap::into_runtime_error)?;
+                let field = module
+                    .strings
+                    .get(field_idx as usize)
+                    .cloned()
+                    .ok_or_else(|| {
+                        VmTrap::BytecodeDecode(
+                            format!("invalid index {field_idx} for string").into(),
+                        )
+                        .into_runtime_error()
+                    })?;
+                let reference =
+                    pop_reference(&mut operand_stack).map_err(VmTrap::into_runtime_error)?;
+                let next = dynamic_ref_field(runtime, &frames, reference, field)
+                    .map_err(VmTrap::into_runtime_error)?;
+                operand_stack
+                    .push(Value::Reference(Some(next)))
+                    .map_err(VmTrap::into_runtime_error)?;
+            }
+            0x31 => {
+                let index = operand_stack.pop().map_err(VmTrap::into_runtime_error)?;
+                let index = index_to_i64(index).map_err(VmTrap::into_runtime_error)?;
+                let reference =
+                    pop_reference(&mut operand_stack).map_err(VmTrap::into_runtime_error)?;
+                let next = dynamic_ref_index(runtime, &frames, reference, index)
+                    .map_err(VmTrap::into_runtime_error)?;
+                operand_stack
+                    .push(Value::Reference(Some(next)))
+                    .map_err(VmTrap::into_runtime_error)?;
+            }
+            0x32 => {
+                let reference =
+                    pop_reference(&mut operand_stack).map_err(VmTrap::into_runtime_error)?;
+                let value = dynamic_load_ref(runtime, &frames, &reference)
+                    .map_err(VmTrap::into_runtime_error)?;
+                operand_stack
+                    .push(value)
+                    .map_err(VmTrap::into_runtime_error)?;
+            }
+            0x33 => {
+                let value = operand_stack.pop().map_err(VmTrap::into_runtime_error)?;
+                let reference =
+                    pop_reference(&mut operand_stack).map_err(VmTrap::into_runtime_error)?;
+                dynamic_store_ref(runtime, &mut frames, &reference, value)
+                    .map_err(VmTrap::into_runtime_error)?;
+            }
             0x40 => execute_binary(runtime, &mut operand_stack, BinaryOp::Add)
                 .map_err(VmTrap::into_runtime_error)?,
             0x41 => execute_binary(runtime, &mut operand_stack, BinaryOp::Sub)
@@ -435,6 +479,215 @@ fn store_ref(
                 Err(VmTrap::NullReference)
             }
         }
+    }
+}
+
+fn pop_reference(stack: &mut OperandStack) -> Result<ValueRef, VmTrap> {
+    let value = stack.pop()?;
+    match value {
+        Value::Reference(Some(reference)) => Ok(reference),
+        Value::Reference(None) => Err(VmTrap::NullReference),
+        _ => Err(VmTrap::Runtime(RuntimeError::TypeMismatch)),
+    }
+}
+
+fn dynamic_ref_field(
+    runtime: &Runtime,
+    frames: &FrameStack,
+    mut reference: ValueRef,
+    field: SmolStr,
+) -> Result<ValueRef, VmTrap> {
+    let target = dynamic_load_ref(runtime, frames, &reference)?;
+    match target {
+        Value::Struct(struct_value) => {
+            if !struct_value.fields.contains_key(field.as_str()) {
+                return Err(VmTrap::Runtime(RuntimeError::UndefinedField(field)));
+            }
+            reference.path.push(RefSegment::Field(field));
+            Ok(reference)
+        }
+        Value::Instance(instance_id) => runtime
+            .storage
+            .ref_for_instance_recursive(instance_id, field.as_str())
+            .ok_or(VmTrap::Runtime(RuntimeError::UndefinedField(field))),
+        _ => Err(VmTrap::Runtime(RuntimeError::TypeMismatch)),
+    }
+}
+
+fn dynamic_ref_index(
+    runtime: &Runtime,
+    frames: &FrameStack,
+    mut reference: ValueRef,
+    index: i64,
+) -> Result<ValueRef, VmTrap> {
+    let target = dynamic_load_ref(runtime, frames, &reference)?;
+    match target {
+        Value::Array(array) => {
+            if array.dimensions.len() != 1 {
+                return Err(VmTrap::Runtime(RuntimeError::TypeMismatch));
+            }
+            let (lower, upper) = array.dimensions[0];
+            if index < lower || index > upper {
+                return Err(VmTrap::Runtime(RuntimeError::IndexOutOfBounds {
+                    index,
+                    lower,
+                    upper,
+                }));
+            }
+            reference.path.push(RefSegment::Index(vec![index]));
+            Ok(reference)
+        }
+        _ => Err(VmTrap::Runtime(RuntimeError::TypeMismatch)),
+    }
+}
+
+fn dynamic_load_ref(
+    runtime: &Runtime,
+    frames: &FrameStack,
+    reference: &ValueRef,
+) -> Result<Value, VmTrap> {
+    if matches!(
+        reference.location,
+        MemoryLocation::Local(FrameId(VM_LOCAL_SENTINEL_FRAME_ID))
+    ) {
+        let frame = frames.current().ok_or(VmTrap::CallStackUnderflow)?;
+        return read_vm_local_ref(frame, reference.offset, &reference.path);
+    }
+    runtime
+        .storage
+        .read_by_ref(reference.clone())
+        .cloned()
+        .ok_or(VmTrap::NullReference)
+}
+
+fn dynamic_store_ref(
+    runtime: &mut Runtime,
+    frames: &mut FrameStack,
+    reference: &ValueRef,
+    value: Value,
+) -> Result<(), VmTrap> {
+    if matches!(
+        reference.location,
+        MemoryLocation::Local(FrameId(VM_LOCAL_SENTINEL_FRAME_ID))
+    ) {
+        let frame = frames.current_mut().ok_or(VmTrap::CallStackUnderflow)?;
+        return write_vm_local_ref(frame, reference.offset, &reference.path, value);
+    }
+    if runtime.storage.write_by_ref(reference.clone(), value) {
+        Ok(())
+    } else {
+        Err(VmTrap::NullReference)
+    }
+}
+
+fn read_vm_local_ref(frame: &VmFrame, offset: usize, path: &[RefSegment]) -> Result<Value, VmTrap> {
+    let root = frame.locals.get(offset).ok_or(VmTrap::NullReference)?;
+    read_value_path(root, path)
+        .cloned()
+        .ok_or(VmTrap::NullReference)
+}
+
+fn write_vm_local_ref(
+    frame: &mut VmFrame,
+    offset: usize,
+    path: &[RefSegment],
+    value: Value,
+) -> Result<(), VmTrap> {
+    let root = frame.locals.get_mut(offset).ok_or(VmTrap::NullReference)?;
+    if write_value_path(root, path, value) {
+        Ok(())
+    } else {
+        Err(VmTrap::NullReference)
+    }
+}
+
+fn read_value_path<'a>(value: &'a Value, path: &[RefSegment]) -> Option<&'a Value> {
+    if path.is_empty() {
+        return Some(value);
+    }
+    match &path[0] {
+        RefSegment::Field(name) => match value {
+            Value::Struct(struct_value) => struct_value
+                .fields
+                .get(name)
+                .and_then(|field| read_value_path(field, &path[1..])),
+            _ => None,
+        },
+        RefSegment::Index(indices) => match value {
+            Value::Array(array) => {
+                let offset = array_offset_i64(&array.dimensions, indices)?;
+                array
+                    .elements
+                    .get(offset)
+                    .and_then(|element| read_value_path(element, &path[1..]))
+            }
+            _ => None,
+        },
+    }
+}
+
+fn write_value_path(target: &mut Value, path: &[RefSegment], value: Value) -> bool {
+    if path.is_empty() {
+        *target = value;
+        return true;
+    }
+
+    match &path[0] {
+        RefSegment::Field(name) => match target {
+            Value::Struct(struct_value) => struct_value
+                .fields
+                .get_mut(name)
+                .map(|field| write_value_path(field, &path[1..], value))
+                .unwrap_or(false),
+            _ => false,
+        },
+        RefSegment::Index(indices) => match target {
+            Value::Array(array) => {
+                let offset = match array_offset_i64(&array.dimensions, indices) {
+                    Some(offset) => offset,
+                    None => return false,
+                };
+                array
+                    .elements
+                    .get_mut(offset)
+                    .map(|element| write_value_path(element, &path[1..], value))
+                    .unwrap_or(false)
+            }
+            _ => false,
+        },
+    }
+}
+
+fn array_offset_i64(dimensions: &[(i64, i64)], indices: &[i64]) -> Option<usize> {
+    if dimensions.len() != indices.len() {
+        return None;
+    }
+    let mut offset: i128 = 0;
+    let mut stride: i128 = 1;
+    for ((lower, upper), index) in dimensions.iter().zip(indices).rev() {
+        if index < lower || index > upper {
+            return None;
+        }
+        let len = (*upper - *lower + 1) as i128;
+        offset += (index - *lower) as i128 * stride;
+        stride *= len;
+    }
+    usize::try_from(offset).ok()
+}
+
+fn index_to_i64(value: Value) -> Result<i64, VmTrap> {
+    match value {
+        Value::SInt(v) => Ok(v as i64),
+        Value::Int(v) => Ok(v as i64),
+        Value::DInt(v) => Ok(v as i64),
+        Value::LInt(v) => Ok(v),
+        Value::USInt(v) => Ok(v as i64),
+        Value::UInt(v) => Ok(v as i64),
+        Value::UDInt(v) => Ok(v as i64),
+        Value::ULInt(v) => {
+            i64::try_from(v).map_err(|_| VmTrap::Runtime(RuntimeError::TypeMismatch))
+        }
+        _ => Err(VmTrap::Runtime(RuntimeError::TypeMismatch)),
     }
 }
 

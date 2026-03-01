@@ -72,8 +72,20 @@ impl<'a> BytecodeEncoder<'a> {
                     code.push(0x20);
                     code.extend_from_slice(&ref_idx.to_le_bytes());
                     Ok(true)
-                } else {
+                } else if matches!(target.as_ref(), crate::eval::expr::Expr::This) {
+                    if self.emit_dynamic_load_name(ctx, field, code)? {
+                        Ok(true)
+                    } else {
+                        Ok(false)
+                    }
+                } else if !self.emit_ref_expr(ctx, target, code)? {
                     Ok(false)
+                } else {
+                    let field_idx = self.strings.intern(field.clone());
+                    code.push(0x30);
+                    code.extend_from_slice(&field_idx.to_le_bytes());
+                    code.push(0x32);
+                    Ok(true)
                 }
             }
             crate::eval::expr::Expr::Index { target, indices } => {
@@ -99,9 +111,27 @@ impl<'a> BytecodeEncoder<'a> {
                     code.push(0x20);
                     code.extend_from_slice(&ref_idx.to_le_bytes());
                     Ok(true)
-                } else {
+                } else if !self.emit_ref_expr(ctx, target, code)? {
                     Ok(false)
+                } else {
+                    for index in indices {
+                        if !self.emit_expr(ctx, index, code)? {
+                            return Ok(false);
+                        }
+                        code.push(0x31);
+                    }
+                    code.push(0x32);
+                    Ok(true)
                 }
+            }
+            crate::eval::expr::Expr::Ref(target) => self.emit_ref_lvalue(ctx, target, code),
+            crate::eval::expr::Expr::Deref(expr) => {
+                if !self.emit_expr(ctx, expr, code)? {
+                    code.truncate(start_len);
+                    return Ok(false);
+                }
+                code.push(0x32);
+                Ok(true)
             }
             crate::eval::expr::Expr::Unary { op, expr } => {
                 use crate::eval::ops::UnaryOp;
@@ -171,6 +201,13 @@ impl<'a> BytecodeEncoder<'a> {
         args: &[crate::eval::CallArg],
         code: &mut Vec<u8>,
     ) -> Result<bool, BytecodeError> {
+        if let crate::eval::expr::Expr::Name(name) = target {
+            let key = SmolStr::new(name.to_ascii_uppercase());
+            if key == "REF" {
+                return self.emit_ref_builtin_call(ctx, args, code);
+            }
+        }
+
         #[derive(Clone, Copy)]
         enum NativeTargetKind {
             Function,
@@ -276,6 +313,92 @@ impl<'a> BytecodeEncoder<'a> {
         code.extend_from_slice(&symbol_idx.to_le_bytes());
         code.extend_from_slice(&arg_count.to_le_bytes());
         Ok(true)
+    }
+
+    fn emit_ref_lvalue(
+        &mut self,
+        ctx: &CodegenContext,
+        target: &crate::eval::expr::LValue,
+        code: &mut Vec<u8>,
+    ) -> Result<bool, BytecodeError> {
+        if let Some(reference) = self.resolve_lvalue_ref(ctx, target)? {
+            let ref_idx = self.ref_index_for(&reference)?;
+            code.push(0x22);
+            code.extend_from_slice(&ref_idx.to_le_bytes());
+            return Ok(true);
+        }
+        self.emit_dynamic_ref_for_lvalue(ctx, target, code)
+    }
+
+    fn emit_ref_expr(
+        &mut self,
+        ctx: &CodegenContext,
+        expr: &crate::eval::expr::Expr,
+        code: &mut Vec<u8>,
+    ) -> Result<bool, BytecodeError> {
+        match expr {
+            crate::eval::expr::Expr::Name(name) => self.emit_ref_for_name(ctx, name, code),
+            crate::eval::expr::Expr::Field { target, field } => {
+                if matches!(target.as_ref(), crate::eval::expr::Expr::This) {
+                    return self.emit_self_field_ref(ctx, field, code);
+                }
+                if !self.emit_ref_expr(ctx, target, code)? {
+                    return Ok(false);
+                }
+                let field_idx = self.strings.intern(field.clone());
+                code.push(0x30);
+                code.extend_from_slice(&field_idx.to_le_bytes());
+                Ok(true)
+            }
+            crate::eval::expr::Expr::Index { target, indices } => {
+                if !self.emit_ref_expr(ctx, target, code)? {
+                    return Ok(false);
+                }
+                for index in indices {
+                    if !self.emit_expr(ctx, index, code)? {
+                        return Ok(false);
+                    }
+                    code.push(0x31);
+                }
+                Ok(true)
+            }
+            crate::eval::expr::Expr::Ref(target) => self.emit_ref_lvalue(ctx, target, code),
+            crate::eval::expr::Expr::Deref(expr) => self.emit_expr(ctx, expr, code),
+            _ => Ok(false),
+        }
+    }
+
+    fn emit_ref_builtin_call(
+        &mut self,
+        ctx: &CodegenContext,
+        args: &[crate::eval::CallArg],
+        code: &mut Vec<u8>,
+    ) -> Result<bool, BytecodeError> {
+        if args.len() != 1 {
+            return Err(BytecodeError::InvalidSection(
+                "REF lowering expects exactly one argument".into(),
+            ));
+        }
+        match &args[0].value {
+            crate::eval::ArgValue::Target(target) => {
+                if self.emit_ref_lvalue(ctx, target, code)? {
+                    Ok(true)
+                } else {
+                    Err(BytecodeError::InvalidSection(
+                        "unsupported REF lowering argument target".into(),
+                    ))
+                }
+            }
+            crate::eval::ArgValue::Expr(expr) => {
+                if self.emit_ref_expr(ctx, expr, code)? {
+                    Ok(true)
+                } else {
+                    Err(BytecodeError::InvalidSection(
+                        "unsupported REF lowering argument expression".into(),
+                    ))
+                }
+            }
+        }
     }
 
     fn intern_native_call_symbol(

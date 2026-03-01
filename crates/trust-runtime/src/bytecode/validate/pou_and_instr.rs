@@ -168,7 +168,8 @@ fn validate_instruction_stream(
             }
             0x23 | 0x24 => {}
             0x30 => {
-                reader.read_u32()?;
+                let name_idx = reader.read_u32()?;
+                ensure_string_index(strings, name_idx)?;
             }
             0x60 => {
                 let type_id = reader.read_u32()?;

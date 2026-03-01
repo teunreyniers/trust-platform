@@ -215,6 +215,56 @@ fn patch_first_call_native_arg_count(module: &mut BytecodeModule, arg_count: u32
     assert!(patched, "expected at least one CALL_NATIVE in main body");
 }
 
+fn patch_first_opcode_u32_operand(module: &mut BytecodeModule, opcode: u8, operand: u32) {
+    let (_, start, end) = main_pou_entry(module);
+    let code = match module.section_mut(SectionId::PouBodies) {
+        Some(SectionData::PouBodies(code)) => code,
+        _ => panic!("missing POU_BODIES"),
+    };
+
+    let mut patched = false;
+    let mut pc = start;
+    while pc < end {
+        let current = code[pc];
+        let operand_len = match current {
+            0x00
+            | 0x01
+            | 0x06
+            | 0x11
+            | 0x12
+            | 0x13
+            | 0x14
+            | 0x15
+            | 0x23
+            | 0x24
+            | 0x31
+            | 0x32
+            | 0x33
+            | 0x40..=0x4E
+            | 0x50..=0x55 => 0,
+            0x02..=0x05 | 0x07 | 0x10 | 0x20..=0x22 | 0x30 | 0x60 | 0x70 => 4,
+            0x08 => 8,
+            0x09 => 12,
+            0x16 => 1,
+            _ => panic!("invalid opcode in main body: 0x{current:02X}"),
+        };
+        if current == opcode {
+            if operand_len < 4 || pc + 5 > end {
+                panic!("opcode 0x{opcode:02X} has no u32 operand");
+            }
+            code[pc + 1..pc + 5].copy_from_slice(&operand.to_le_bytes());
+            patched = true;
+            break;
+        }
+        pc += 1 + operand_len;
+    }
+
+    assert!(
+        patched,
+        "expected opcode 0x{opcode:02X} in main body for operand patch"
+    );
+}
+
 #[test]
 fn vm_executes_program_with_stack_and_pc_progression() {
     let source = r#"
@@ -445,6 +495,63 @@ fn vm_opcode_positive_path_covers_string_and_wstring_literals() {
 }
 
 #[test]
+fn vm_opcode_positive_path_covers_dynamic_reference_and_nested_chains() {
+    let source = r#"
+        TYPE
+            Inner : STRUCT
+                arr : ARRAY[0..2] OF INT;
+            END_STRUCT;
+            Outer : STRUCT
+                inner : Inner;
+            END_STRUCT;
+        END_TYPE
+
+        PROGRAM Main
+        VAR
+            o : Outer;
+            idx : INT := INT#1;
+            value_cell : INT := INT#4;
+            r : REF_TO INT;
+            out_ref : INT := INT#0;
+            out_nested : INT := INT#0;
+        END_VAR
+        r := REF(value_cell);
+        r^ := r^ + INT#5;
+        out_ref := r^;
+        out_nested := REF(o)^.inner.arr[idx];
+        END_PROGRAM
+    "#;
+    let module = bytecode_module_from_source(source).expect("compile bytecode module");
+    let body = main_body_bytes(&module);
+    assert!(
+        body.contains(&0x30),
+        "expected REF_FIELD opcode in main body"
+    );
+    assert!(
+        body.contains(&0x31),
+        "expected REF_INDEX opcode in main body"
+    );
+    assert!(
+        body.contains(&0x32),
+        "expected LOAD_DYNAMIC opcode in main body"
+    );
+    assert!(
+        body.contains(&0x33),
+        "expected STORE_DYNAMIC opcode in main body"
+    );
+
+    let mut harness = vm_harness(source);
+    let cycle = harness.cycle();
+    assert!(
+        cycle.errors.is_empty(),
+        "dynamic reference opcode execution failed: {:?}",
+        cycle.errors
+    );
+    harness.assert_eq("out_ref", 9i16);
+    harness.assert_eq("out_nested", 0i16);
+}
+
+#[test]
 fn vm_enforces_execution_deadline() {
     let source = r#"
         PROGRAM Main
@@ -514,6 +621,60 @@ fn vm_rejects_invalid_call_native_method_missing_receiver_payload() {
     assert_invalid_bytecode_contains(
         &cycle.errors,
         "vm invalid CALL_NATIVE payload: arg_count smaller than native receiver arity",
+    );
+}
+
+#[test]
+fn vm_validator_rejects_invalid_ref_field_string_index() {
+    let source = r#"
+        TYPE
+            Box : STRUCT
+                value : INT;
+            END_STRUCT;
+        END_TYPE
+
+        PROGRAM Main
+        VAR
+            b : Box;
+            out_value : INT := INT#0;
+        END_VAR
+        b.value := INT#7;
+        out_value := REF(b)^.value;
+        END_PROGRAM
+    "#;
+    let mut module = bytecode_module_from_source(source).expect("compile module");
+    patch_first_opcode_u32_operand(&mut module, 0x30, 255);
+
+    assert_apply_invalid_bytecode_contains(&module, "invalid index 255 for string");
+}
+
+#[test]
+fn vm_rejects_load_dynamic_with_non_reference_operand() {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            x : INT := INT#1;
+        END_VAR
+        x := x;
+        END_PROGRAM
+    "#;
+    let mut module = bytecode_module_from_source(source).expect("compile module");
+    let mut body = Vec::new();
+    body.push(0x20);
+    body.extend_from_slice(&0_u32.to_le_bytes());
+    body.push(0x32);
+    body.push(0x06);
+    replace_main_body(&mut module, &body);
+
+    let mut harness = vm_harness_from_module(source, &module);
+    let cycle = harness.cycle();
+    assert!(
+        cycle
+            .errors
+            .iter()
+            .any(|err| matches!(err, RuntimeError::TypeMismatch)),
+        "expected TypeMismatch for LOAD_DYNAMIC on non-reference, got {:?}",
+        cycle.errors
     );
 }
 

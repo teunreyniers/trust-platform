@@ -340,3 +340,43 @@ fn differential_c3_interface_method_dispatch() {
 
     assert_backend_parity(source, &["out_iface_1", "out_direct", "out_iface_2"], 1);
 }
+
+#[test]
+fn differential_c4_reference_deref_and_nested_field_index_chains() {
+    let source = r#"
+        TYPE
+            Inner : STRUCT
+                arr : ARRAY[0..2] OF INT;
+            END_STRUCT;
+            Outer : STRUCT
+                inner : Inner;
+            END_STRUCT;
+        END_TYPE
+
+        PROGRAM Main
+        VAR
+            o : Outer;
+            idx : INT := INT#1;
+            value_cell : INT := INT#4;
+            r_value : REF_TO INT;
+            r_outer : REF_TO Outer;
+            out_deref : INT := INT#0;
+            out_after_write : INT := INT#0;
+            out_nested_chain : INT := INT#0;
+        END_VAR
+
+        r_value := REF(value_cell);
+        r_outer := REF(o);
+        out_deref := r_value^;
+        r_value^ := r_value^ + INT#3;
+        out_after_write := r_value^;
+        out_nested_chain := r_outer^.inner.arr[idx];
+        END_PROGRAM
+    "#;
+
+    assert_backend_parity(
+        source,
+        &["out_deref", "out_after_write", "out_nested_chain"],
+        1,
+    );
+}

@@ -5,15 +5,12 @@ fn expr_supported(expr: &crate::eval::expr::Expr) -> bool {
         Expr::Literal(value) => type_id_for_value(value).is_some(),
         Expr::Name(_) => true,
         Expr::This | Expr::Super => true,
-        Expr::Field { target, field: _ } => {
-            matches!(target.as_ref(), Expr::Name(_) | Expr::This | Expr::Super)
-        }
+        Expr::Field { target, field: _ } => expr_supported(target),
         Expr::Index { target, indices } => {
-            matches!(
-                target.as_ref(),
-                Expr::Name(_) | Expr::This | Expr::Super
-            ) && indices.iter().all(expr_supported)
+            expr_supported(target) && indices.iter().all(expr_supported)
         }
+        Expr::Ref(target) => lvalue_supported(target),
+        Expr::Deref(expr) => expr_supported(expr),
         Expr::Unary { op, expr } => {
             matches!(op, UnaryOp::Neg | UnaryOp::Not | UnaryOp::Pos) && expr_supported(expr)
         }
