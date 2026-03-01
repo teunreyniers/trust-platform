@@ -66,12 +66,7 @@ fn const_expr_supported(expr: &crate::eval::expr::Expr) -> bool {
     use crate::eval::expr::Expr;
     use crate::eval::ops::{BinaryOp, UnaryOp};
     match expr {
-        Expr::Literal(value) => {
-            if matches!(value, Value::String(_) | Value::WString(_)) {
-                return false;
-            }
-            type_id_for_value(value).is_some()
-        }
+        Expr::Literal(value) => type_id_for_value(value).is_some(),
         Expr::Unary { op, expr } => {
             matches!(op, UnaryOp::Neg | UnaryOp::Not | UnaryOp::Pos) && const_expr_supported(expr)
         }
@@ -155,14 +150,12 @@ fn encode_const_payload(value: &Value) -> Result<Vec<u8>, BytecodeError> {
         Value::Char(v) => payload.extend_from_slice(&v.to_le_bytes()),
         Value::WChar(v) => payload.extend_from_slice(&v.to_le_bytes()),
         Value::String(value) => {
-            return Err(BytecodeError::InvalidSection(
-                format!("string const not supported yet: {value}").into(),
-            ));
+            payload.extend_from_slice(value.as_bytes());
         }
-        Value::WString(_) => {
-            return Err(BytecodeError::InvalidSection(
-                "wstring const not supported yet".into(),
-            ));
+        Value::WString(value) => {
+            for unit in value.encode_utf16() {
+                payload.extend_from_slice(&unit.to_le_bytes());
+            }
         }
         Value::Time(value) | Value::LTime(value) => {
             payload.extend_from_slice(&value.as_nanos().to_le_bytes());

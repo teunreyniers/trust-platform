@@ -2,12 +2,7 @@ fn expr_supported(expr: &crate::eval::expr::Expr) -> bool {
     use crate::eval::expr::Expr;
     use crate::eval::ops::{BinaryOp, UnaryOp};
     match expr {
-        Expr::Literal(value) => {
-            if matches!(value, Value::String(_) | Value::WString(_)) {
-                return false;
-            }
-            type_id_for_value(value).is_some()
-        }
+        Expr::Literal(value) => type_id_for_value(value).is_some(),
         Expr::Name(_) => true,
         Expr::Field { target, field: _ } => matches!(target.as_ref(), Expr::Name(_)),
         Expr::Index { target, indices } => {

@@ -184,3 +184,72 @@ fn differential_c1_stdlib_named_dispatch() {
 
     assert_backend_parity(source, &["out_sel", "out_max"], 1);
 }
+
+#[test]
+fn differential_c2_string_and_wstring_literals_and_comparisons() {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            s_value : STRING := '';
+            ws_value : WSTRING := "";
+            out_str_eq : BOOL := FALSE;
+            out_str_lt : BOOL := FALSE;
+            out_wstr_eq : BOOL := FALSE;
+            out_wstr_lt : BOOL := FALSE;
+        END_VAR
+
+        s_value := 'WORLD';
+        ws_value := "LUNA";
+        out_str_eq := s_value = 'WORLD';
+        out_str_lt := 'AA' < 'AB';
+        out_wstr_eq := ws_value = "LUNA";
+        out_wstr_lt := "AA" < "AB";
+        END_PROGRAM
+    "#;
+
+    assert_backend_parity(
+        source,
+        &[
+            "s_value",
+            "ws_value",
+            "out_str_eq",
+            "out_str_lt",
+            "out_wstr_eq",
+            "out_wstr_lt",
+        ],
+        1,
+    );
+}
+
+#[test]
+fn differential_c2_string_stdlib_dispatch_with_literals() {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            out_left : STRING := '';
+            out_mid : STRING := '';
+            out_find : INT := INT#0;
+            out_w_replace : WSTRING := "";
+            out_w_insert : WSTRING := "";
+        END_VAR
+
+        out_left := LEFT(IN := 'ABCDE', L := INT#3);
+        out_mid := MID(IN := 'ABCDE', L := INT#2, P := INT#2);
+        out_find := FIND(IN1 := 'BC', IN2 := 'ABCDE');
+        out_w_replace := REPLACE(IN1 := "ABCDE", IN2 := "Z", L := INT#2, P := INT#3);
+        out_w_insert := INSERT(IN1 := "ABE", IN2 := "CD", P := INT#3);
+        END_PROGRAM
+    "#;
+
+    assert_backend_parity(
+        source,
+        &[
+            "out_left",
+            "out_mid",
+            "out_find",
+            "out_w_replace",
+            "out_w_insert",
+        ],
+        1,
+    );
+}

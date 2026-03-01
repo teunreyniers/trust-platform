@@ -1,9 +1,10 @@
 use std::time::{Duration as StdDuration, Instant};
 
-use trust_runtime::bytecode::{BytecodeModule, PouKind, SectionData, SectionId};
+use trust_runtime::bytecode::{BytecodeModule, PouKind, SectionData, SectionId, TypeData};
 use trust_runtime::error::RuntimeError;
 use trust_runtime::execution_backend::ExecutionBackend;
 use trust_runtime::harness::{bytecode_module_from_source, TestHarness};
+use trust_runtime::value::Value;
 use trust_runtime::Runtime;
 
 fn vm_harness(source: &str) -> TestHarness {
@@ -130,6 +131,38 @@ fn assert_apply_invalid_bytecode_contains(module: &BytecodeModule, needle: &str)
     }
 }
 
+fn mutate_first_const_payload_for_primitive(
+    module: &mut BytecodeModule,
+    primitive_id: u16,
+    payload: Vec<u8>,
+) {
+    let type_table = match module.section(SectionId::TypeTable) {
+        Some(SectionData::TypeTable(table)) => table,
+        _ => panic!("missing TYPE_TABLE"),
+    };
+    let const_pool = match module.section(SectionId::ConstPool) {
+        Some(SectionData::ConstPool(pool)) => pool,
+        _ => panic!("missing CONST_POOL"),
+    };
+
+    let const_idx = const_pool
+        .entries
+        .iter()
+        .position(|entry| {
+            matches!(
+                type_table.entries.get(entry.type_id as usize).map(|entry| &entry.data),
+                Some(TypeData::Primitive { prim_id, .. }) if *prim_id == primitive_id
+            )
+        })
+        .expect("expected const entry for primitive type");
+
+    if let Some(SectionData::ConstPool(pool)) = module.section_mut(SectionId::ConstPool) {
+        pool.entries[const_idx].payload = payload;
+    } else {
+        panic!("missing CONST_POOL");
+    }
+}
+
 #[test]
 fn vm_executes_program_with_stack_and_pc_progression() {
     let source = r#"
@@ -226,6 +259,44 @@ fn vm_opcode_positive_path_covers_call_native_stdlib_dispatch() {
 }
 
 #[test]
+fn vm_opcode_positive_path_covers_string_and_wstring_literals() {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            s : STRING := '';
+            ws : WSTRING := "";
+            str_eq : BOOL := FALSE;
+            wstr_lt : BOOL := FALSE;
+        END_VAR
+        s := 'AB';
+        ws := "CD";
+        str_eq := s = 'AB';
+        wstr_lt := ws < "CE";
+        END_PROGRAM
+    "#;
+    let module = bytecode_module_from_source(source).expect("compile bytecode module");
+    let body = main_body_bytes(&module);
+    assert!(
+        body.contains(&0x10),
+        "expected LOAD_CONST opcode for string/wstring literals"
+    );
+    assert!(body.contains(&0x50), "expected EQ opcode in main body");
+    assert!(body.contains(&0x52), "expected LT opcode in main body");
+
+    let mut harness = vm_harness(source);
+    let cycle = harness.cycle();
+    assert!(
+        cycle.errors.is_empty(),
+        "string/wstring literal execution failed: {:?}",
+        cycle.errors
+    );
+    harness.assert_eq("s", Value::String("AB".into()));
+    harness.assert_eq("ws", Value::WString("CD".to_string()));
+    harness.assert_eq("str_eq", true);
+    harness.assert_eq("wstr_lt", true);
+}
+
+#[test]
 fn vm_enforces_execution_deadline() {
     let source = r#"
         PROGRAM Main
@@ -268,6 +339,38 @@ fn vm_rejects_invalid_call_native_symbol_index() {
     replace_main_body(&mut module, &body);
 
     assert_apply_invalid_bytecode_contains(&module, "invalid index 255 for native symbol");
+}
+
+#[test]
+fn vm_rejects_invalid_string_const_utf8_payload() {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            s : STRING := '';
+        END_VAR
+        s := 'A';
+        END_PROGRAM
+    "#;
+    let mut module = bytecode_module_from_source(source).expect("compile module");
+    mutate_first_const_payload_for_primitive(&mut module, 24, vec![0xFF]);
+
+    assert_apply_invalid_bytecode_contains(&module, "invalid STRING const UTF-8");
+}
+
+#[test]
+fn vm_rejects_invalid_wstring_const_utf16_payload() {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            ws : WSTRING := "";
+        END_VAR
+        ws := "A";
+        END_PROGRAM
+    "#;
+    let mut module = bytecode_module_from_source(source).expect("compile module");
+    mutate_first_const_payload_for_primitive(&mut module, 25, vec![0x41]);
+
+    assert_apply_invalid_bytecode_contains(&module, "invalid WSTRING const payload length");
 }
 
 #[test]
