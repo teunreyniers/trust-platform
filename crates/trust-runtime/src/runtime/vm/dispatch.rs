@@ -725,11 +725,21 @@ fn sizeof_type_from_table(types: &TypeTable, type_idx: u32) -> Result<u64, Runti
     sizeof_type_from_table_inner(types, type_idx, &mut stack)
 }
 
+const SIZEOF_TYPE_MAX_DEPTH: usize = 128;
+
 fn sizeof_type_from_table_inner(
     types: &TypeTable,
     type_idx: u32,
     stack: &mut Vec<u32>,
 ) -> Result<u64, RuntimeError> {
+    if stack.len() >= SIZEOF_TYPE_MAX_DEPTH {
+        return Err(RuntimeError::InvalidBytecode(
+            format!(
+                "SIZEOF type nesting exceeds max depth {SIZEOF_TYPE_MAX_DEPTH} at index {type_idx}"
+            )
+            .into(),
+        ));
+    }
     if stack.contains(&type_idx) {
         return Err(RuntimeError::InvalidBytecode(
             format!("SIZEOF type recursion at index {type_idx}").into(),

@@ -1,6 +1,8 @@
 use std::time::{Duration as StdDuration, Instant};
 
-use trust_runtime::bytecode::{BytecodeModule, PouKind, SectionData, SectionId, TypeData};
+use trust_runtime::bytecode::{
+    BytecodeModule, PouKind, SectionData, SectionId, TypeData, TypeEntry, TypeKind,
+};
 use trust_runtime::error::RuntimeError;
 use trust_runtime::execution_backend::ExecutionBackend;
 use trust_runtime::harness::{bytecode_module_from_source, TestHarness};
@@ -265,6 +267,50 @@ fn patch_first_opcode_u32_operand(module: &mut BytecodeModule, opcode: u8, opera
         patched,
         "expected opcode 0x{opcode:02X} in main body for operand patch"
     );
+}
+
+fn first_opcode_u32_operand(module: &BytecodeModule, opcode: u8) -> u32 {
+    let (_, start, end) = main_pou_entry(module);
+    let code = match module.section(SectionId::PouBodies) {
+        Some(SectionData::PouBodies(code)) => code,
+        _ => panic!("missing POU_BODIES"),
+    };
+
+    let mut pc = start;
+    while pc < end {
+        let current = code[pc];
+        let operand_len = match current {
+            0x00
+            | 0x01
+            | 0x06
+            | 0x11
+            | 0x12
+            | 0x13
+            | 0x14
+            | 0x15
+            | 0x23
+            | 0x24
+            | 0x31
+            | 0x32
+            | 0x33
+            | 0x61
+            | 0x40..=0x4E
+            | 0x50..=0x55 => 0,
+            0x02..=0x05 | 0x07 | 0x10 | 0x20..=0x22 | 0x30 | 0x60 | 0x70 => 4,
+            0x08 => 8,
+            0x09 => 12,
+            0x16 => 1,
+            _ => panic!("invalid opcode in main body: 0x{current:02X}"),
+        };
+        if current == opcode {
+            if operand_len < 4 || pc + 5 > end {
+                panic!("opcode 0x{opcode:02X} has no u32 operand");
+            }
+            return u32::from_le_bytes([code[pc + 1], code[pc + 2], code[pc + 3], code[pc + 4]]);
+        }
+        pc += 1 + operand_len;
+    }
+    panic!("expected opcode 0x{opcode:02X} in main body");
 }
 
 #[test]
@@ -754,6 +800,46 @@ fn vm_rejects_sizeof_expr_for_null_value() {
     let mut harness = vm_harness_from_module(source, &module);
     let cycle = harness.cycle();
     assert_invalid_bytecode_contains(&cycle.errors, "vm operand stack underflow");
+}
+
+#[test]
+fn vm_rejects_sizeof_type_with_excessive_non_cyclic_alias_depth() {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            out_size : DINT := DINT#0;
+        END_VAR
+        out_size := SIZEOF(INT);
+        END_PROGRAM
+    "#;
+    let mut module = bytecode_module_from_source(source).expect("compile module");
+    let int_type_idx = first_opcode_u32_operand(&module, 0x60);
+    let alias_start = match module.section(SectionId::TypeTable) {
+        Some(SectionData::TypeTable(table)) => table.entries.len() as u32,
+        _ => panic!("missing TYPE_TABLE"),
+    };
+    let alias_depth = 129u32;
+    if let Some(SectionData::TypeTable(table)) = module.section_mut(SectionId::TypeTable) {
+        for i in 0..alias_depth {
+            let target_type_id = if i + 1 < alias_depth {
+                alias_start + i + 1
+            } else {
+                int_type_idx
+            };
+            table.entries.push(TypeEntry {
+                kind: TypeKind::Alias,
+                name_idx: None,
+                data: TypeData::Alias { target_type_id },
+            });
+        }
+    } else {
+        panic!("missing TYPE_TABLE");
+    }
+    patch_first_opcode_u32_operand(&mut module, 0x60, alias_start);
+
+    let mut harness = vm_harness_from_module(source, &module);
+    let cycle = harness.cycle();
+    assert_invalid_bytecode_contains(&cycle.errors, "SIZEOF type nesting exceeds max depth");
 }
 
 #[test]

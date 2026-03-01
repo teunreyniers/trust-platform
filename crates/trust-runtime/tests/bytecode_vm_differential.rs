@@ -43,6 +43,25 @@ fn assert_backend_parity(source: &str, vars: &[&str], cycles: usize) {
     }
 }
 
+fn assert_backend_error_parity(source: &str, cycles: usize) {
+    let mut interpreter = TestHarness::from_source(source).expect("compile interpreter harness");
+    let mut vm = vm_harness(source);
+
+    for _ in 0..cycles {
+        let interp_cycle = interpreter.cycle();
+        let vm_cycle = vm.cycle();
+        assert_eq!(
+            interp_cycle.errors, vm_cycle.errors,
+            "backend errors diverged: interp={:?} vm={:?}",
+            interp_cycle.errors, vm_cycle.errors
+        );
+        assert!(
+            !interp_cycle.errors.is_empty(),
+            "expected negative-path runtime error parity, but both backends returned no errors"
+        );
+    }
+}
+
 #[test]
 fn differential_c1_function_named_default_and_inout_calls() {
     let source = r#"
@@ -186,6 +205,28 @@ fn differential_c1_stdlib_named_dispatch() {
 }
 
 #[test]
+fn differential_c1_missing_required_argument_error_parity() {
+    let source = r#"
+        FUNCTION Divide : INT
+        VAR_INPUT
+            a : INT;
+            b : INT;
+        END_VAR
+        Divide := a / b;
+        END_FUNCTION
+
+        PROGRAM Main
+        VAR
+            out_value : INT := INT#0;
+        END_VAR
+        out_value := Divide(a := INT#7, b := INT#0);
+        END_PROGRAM
+    "#;
+
+    assert_backend_error_parity(source, 1);
+}
+
+#[test]
 fn differential_c2_string_and_wstring_literals_and_comparisons() {
     let source = r#"
         PROGRAM Main
@@ -228,14 +269,16 @@ fn differential_c2_string_stdlib_dispatch_with_literals() {
         VAR
             out_left : STRING := '';
             out_mid : STRING := '';
-            out_find : INT := INT#0;
+            out_find_found : INT := INT#0;
+            out_find_missing : INT := INT#0;
             out_w_replace : WSTRING := "";
             out_w_insert : WSTRING := "";
         END_VAR
 
         out_left := LEFT(IN := 'ABCDE', L := INT#3);
         out_mid := MID(IN := 'ABCDE', L := INT#2, P := INT#2);
-        out_find := FIND(IN1 := 'BC', IN2 := 'ABCDE');
+        out_find_found := FIND(IN1 := 'ABCDE', IN2 := 'BC');
+        out_find_missing := FIND(IN1 := 'BC', IN2 := 'ABCDE');
         out_w_replace := REPLACE(IN1 := "ABCDE", IN2 := "Z", L := INT#2, P := INT#3);
         out_w_insert := INSERT(IN1 := "ABE", IN2 := "CD", P := INT#3);
         END_PROGRAM
@@ -246,12 +289,28 @@ fn differential_c2_string_stdlib_dispatch_with_literals() {
         &[
             "out_left",
             "out_mid",
-            "out_find",
+            "out_find_found",
+            "out_find_missing",
             "out_w_replace",
             "out_w_insert",
         ],
         1,
     );
+}
+
+#[test]
+fn differential_c2_string_stdlib_invalid_argument_error_parity() {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            denom : INT := INT#0;
+            out_left : STRING := '';
+        END_VAR
+        out_left := LEFT(IN := 'ABCDE', L := INT#1 / denom);
+        END_PROGRAM
+    "#;
+
+    assert_backend_error_parity(source, 1);
 }
 
 #[test]
@@ -342,6 +401,36 @@ fn differential_c3_interface_method_dispatch() {
 }
 
 #[test]
+fn differential_c3_interface_call_on_uninitialized_receiver_error_parity() {
+    let source = r#"
+        INTERFACE ICounter
+        METHOD Next : INT
+        END_METHOD
+        END_INTERFACE
+
+        CLASS Counter IMPLEMENTS ICounter
+        VAR PUBLIC
+            value : INT := INT#0;
+        END_VAR
+        METHOD PUBLIC Next : INT
+        value := value + INT#1;
+        Next := value;
+        END_METHOD
+        END_CLASS
+
+        PROGRAM Main
+        VAR
+            i : ICounter;
+            out_value : INT := INT#0;
+        END_VAR
+        out_value := i.Next();
+        END_PROGRAM
+    "#;
+
+    assert_backend_error_parity(source, 1);
+}
+
+#[test]
 fn differential_c4_reference_deref_and_nested_field_index_chains() {
     let source = r#"
         TYPE
@@ -402,4 +491,38 @@ fn differential_c5_sizeof_type_and_expression_edge_cases() {
         &["out_size_type_int", "out_size_expr_s", "out_size_expr_ws"],
         1,
     );
+}
+
+#[test]
+fn differential_c4_null_reference_deref_error_parity() {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            r : REF_TO INT;
+            out_value : INT := INT#0;
+        END_VAR
+        out_value := r^;
+        END_PROGRAM
+    "#;
+
+    assert_backend_error_parity(source, 1);
+}
+
+#[test]
+fn differential_c5_sizeof_unsupported_type_error_parity() {
+    let source = r#"
+        INTERFACE ICounter
+        METHOD Next : INT
+        END_METHOD
+        END_INTERFACE
+
+        PROGRAM Main
+        VAR
+            out_size : DINT := DINT#0;
+        END_VAR
+        out_size := SIZEOF(ICounter);
+        END_PROGRAM
+    "#;
+
+    assert_backend_error_parity(source, 1);
 }
