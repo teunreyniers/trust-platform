@@ -72,8 +72,13 @@ prepare_corpus_dir() {
   local target="$1"
   local source_corpus_dir="${FUZZ_DIR}/corpus/${target}"
   if [[ ! -d "$source_corpus_dir" ]]; then
-    echo "[salsa-fuzz] FAIL: corpus dir not found for target=${target} at ${source_corpus_dir}" >&2
-    return 1
+    local generated_dir
+    generated_dir="$(mktemp -d "/tmp/salsa-fuzz-${target}-${MODE}-seed-XXXXXX")"
+    : > "${generated_dir}/seed"
+    TEMP_CORPUS_DIRS+=("$generated_dir")
+    echo "[salsa-fuzz] warn: corpus dir missing for target=${target} at ${source_corpus_dir}; using generated seed corpus (${generated_dir})" >&2
+    printf '%s\n' "$generated_dir"
+    return 0
   fi
 
   local corpus_limit
