@@ -5,10 +5,14 @@
 use indexmap::IndexMap;
 use smol_str::SmolStr;
 
+use crate::error;
+#[cfg(feature = "legacy-interpreter")]
 use crate::eval::{self, EvalContext};
+#[cfg(feature = "legacy-interpreter")]
+use crate::stdlib;
 use crate::task::{ProgramDef, TaskConfig};
 use crate::value::{Duration, Value};
-use crate::{error, stdlib};
+#[cfg(feature = "legacy-interpreter")]
 use trust_hir::symbols::ParamDirection;
 
 use super::core::Runtime;
@@ -132,6 +136,15 @@ impl Runtime {
 
     /// Execute a program body in the runtime context.
     pub fn execute_program(&mut self, program: &ProgramDef) -> Result<(), error::RuntimeError> {
+        let backend = super::backend::resolve_backend(self.execution_backend);
+        backend.execute_program(self, program)
+    }
+
+    #[cfg(feature = "legacy-interpreter")]
+    pub(super) fn execute_program_interpreter(
+        &mut self,
+        program: &ProgramDef,
+    ) -> Result<(), error::RuntimeError> {
         let mut debug = self.debug.take();
         let instance_id = match self.storage.get_global(program.name.as_ref()) {
             Some(Value::Instance(id)) => Some(*id),
@@ -319,6 +332,15 @@ impl Runtime {
     }
 
     fn execute_function_block_ref(
+        &mut self,
+        reference: &crate::value::ValueRef,
+    ) -> Result<(), error::RuntimeError> {
+        let backend = super::backend::resolve_backend(self.execution_backend);
+        backend.execute_function_block_ref(self, reference)
+    }
+
+    #[cfg(feature = "legacy-interpreter")]
+    pub(super) fn execute_function_block_ref_interpreter(
         &mut self,
         reference: &crate::value::ValueRef,
     ) -> Result<(), error::RuntimeError> {

@@ -202,9 +202,15 @@ impl DebugAdapter {
             return self.handle_set_expression_paused(request, args, directive, snapshot.unwrap());
         }
         let runtime_handle = self.session.runtime_handle();
-        let mut runtime = match runtime_handle.lock() {
+        let mut runtime = match runtime_handle.try_lock() {
             Ok(runtime) => runtime,
-            Err(poisoned) => poisoned.into_inner(),
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                return DispatchOutcome {
+                    responses: vec![self.error_response(&request, "runtime busy")],
+                    ..DispatchOutcome::default()
+                };
+            }
         };
 
         if frame_id == Some(FrameId(0)) && runtime.storage().frames().is_empty() {

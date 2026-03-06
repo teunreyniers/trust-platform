@@ -102,6 +102,75 @@ impl Runtime {
         self.current_time
     }
 
+    /// Returns the active execution backend mode.
+    #[must_use]
+    pub fn execution_backend(&self) -> crate::execution_backend::ExecutionBackend {
+        self.execution_backend
+    }
+
+    /// Select execution backend mode.
+    pub fn set_execution_backend(
+        &mut self,
+        backend: crate::execution_backend::ExecutionBackend,
+    ) -> Result<(), error::RuntimeError> {
+        super::backend::validate_backend_selection(self, backend)?;
+        self.execution_backend = backend;
+        self.metrics.set_execution_backend(backend);
+        Ok(())
+    }
+
+    /// Enable or disable register-VM profiling counters.
+    pub fn set_vm_register_profile_enabled(&mut self, enabled: bool) {
+        self.vm_register_profile.set_enabled(enabled);
+    }
+
+    /// Enable or disable register-IR lowering cache reuse.
+    pub fn set_vm_register_lowering_cache_enabled(&mut self, enabled: bool) {
+        self.vm_register_lowering_cache.set_enabled(enabled);
+    }
+
+    /// Clear register-IR lowering cache entries and counters.
+    pub fn reset_vm_register_lowering_cache(&mut self) {
+        self.vm_register_lowering_cache.reset();
+    }
+
+    /// Snapshot register-IR lowering cache counters.
+    #[must_use]
+    pub fn vm_register_lowering_cache_snapshot(
+        &self,
+    ) -> crate::execution_backend::VmRegisterLoweringCacheSnapshot {
+        self.vm_register_lowering_cache.snapshot()
+    }
+
+    /// Clear register-VM profiling counters.
+    pub fn reset_vm_register_profile(&mut self) {
+        self.vm_register_profile.reset();
+    }
+
+    /// Snapshot register-VM profiling counters.
+    #[must_use]
+    pub fn vm_register_profile_snapshot(&self) -> crate::execution_backend::VmRegisterProfileSnapshot {
+        self.vm_register_profile.snapshot()
+    }
+
+    /// Enable or disable the experimental tier-1 specialized register-executor path.
+    pub fn set_vm_tier1_specialized_executor_enabled(&mut self, enabled: bool) {
+        self.vm_tier1_specialized_executor.set_enabled(enabled);
+    }
+
+    /// Clear tier-1 specialized register-executor cache and counters.
+    pub fn reset_vm_tier1_specialized_executor(&mut self) {
+        self.vm_tier1_specialized_executor.reset();
+    }
+
+    /// Snapshot tier-1 specialized register-executor cache/counter state.
+    #[must_use]
+    pub fn vm_tier1_specialized_executor_snapshot(
+        &self,
+    ) -> crate::execution_backend::VmTier1SpecializedExecutorSnapshot {
+        self.vm_tier1_specialized_executor.snapshot()
+    }
+
     /// Access the I/O interface.
     pub fn io(&self) -> &IoInterface {
         self.io.interface()

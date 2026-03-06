@@ -2,7 +2,7 @@ use smol_str::SmolStr;
 
 use crate::error::RuntimeError;
 use crate::eval::EvalContext;
-use crate::value::{ArrayValue, RefSegment, StructValue, Value, ValueRef};
+use crate::value::{RefSegment, Value, ValueRef};
 
 use super::access::{
     array_offset, eval_indices, index_to_i64, read_field, read_indices, read_name,
@@ -21,9 +21,10 @@ pub(super) fn resolve_reference_for_lvalue(
             let base = resolve_reference(ctx, name)
                 .ok_or_else(|| RuntimeError::UndefinedVariable(name.clone()))?;
             let array_value = read_name(ctx, name)?;
-            let Value::Array(ArrayValue { dimensions, .. }) = &array_value else {
+            let Value::Array(array) = &array_value else {
                 return Err(RuntimeError::TypeMismatch);
             };
+            let dimensions = &array.dimensions;
             let index_values = eval_indices(ctx, indices)?;
             array_offset(dimensions, &index_values)?;
             let mut index_path = Vec::with_capacity(index_values.len());
@@ -41,7 +42,8 @@ pub(super) fn resolve_reference_for_lvalue(
                     .storage
                     .ref_for_instance_recursive(id, field.as_ref())
                     .ok_or_else(|| RuntimeError::UndefinedField(field.clone())),
-                Value::Struct(StructValue { fields, .. }) => {
+                Value::Struct(struct_value) => {
+                    let fields = &struct_value.fields;
                     if !fields.contains_key(field) {
                         return Err(RuntimeError::UndefinedField(field.clone()));
                     }

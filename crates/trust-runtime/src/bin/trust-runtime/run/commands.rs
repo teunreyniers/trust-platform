@@ -1,41 +1,42 @@
+pub struct PlayOptions {
+    pub restart: String,
+    pub verbose: bool,
+    pub console: ConsoleMode,
+    pub beginner: bool,
+    pub simulation: bool,
+    pub time_scale: u32,
+    pub execution_backend: Option<crate::cli::ExecutionBackendArg>,
+}
+
 pub fn run_default(verbose: bool) -> anyhow::Result<()> {
+    let default_options = PlayOptions {
+        restart: "cold".to_string(),
+        verbose,
+        console: ConsoleMode::Auto,
+        beginner: false,
+        simulation: false,
+        time_scale: 1,
+        execution_backend: None,
+    };
     match detect_bundle_path(None) {
-        Ok(path) => run_play(
-            Some(path),
-            "cold".to_string(),
-            verbose,
-            ConsoleMode::Auto,
-            false,
-            false,
-            1,
-        ),
+        Ok(path) => run_play(Some(path), default_options),
         Err(_) => {
             if std::io::stdin().is_terminal() {
                 setup::run_setup_default()
             } else {
                 run_play(
                     None,
-                    "cold".to_string(),
-                    verbose,
-                    ConsoleMode::Disabled,
-                    false,
-                    false,
-                    1,
+                    PlayOptions {
+                        console: ConsoleMode::Disabled,
+                        ..default_options
+                    },
                 )
             }
         }
     }
 }
 
-pub fn run_play(
-    project: Option<PathBuf>,
-    restart: String,
-    verbose: bool,
-    console: ConsoleMode,
-    beginner: bool,
-    simulation: bool,
-    time_scale: u32,
-) -> anyhow::Result<()> {
+pub fn run_play(project: Option<PathBuf>, options: PlayOptions) -> anyhow::Result<()> {
     let mut created = false;
     let project_path = match project {
         Some(path) => {
@@ -79,13 +80,14 @@ pub fn run_play(
         Some(project_path),
         None,
         None,
-        restart,
-        verbose,
+        options.restart,
+        options.verbose,
         true,
-        console,
-        beginner,
-        simulation,
-        time_scale,
+        options.console,
+        options.beginner,
+        options.simulation,
+        options.time_scale,
+        options.execution_backend,
     )
 }
 

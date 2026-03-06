@@ -1,10 +1,11 @@
 use crate::error::RuntimeError;
-use crate::eval::EvalContext;
 use crate::memory::InstanceId;
 use crate::value::Value;
 
+use super::BuiltinExecContext;
+
 pub(super) fn read_bool(
-    ctx: &EvalContext<'_>,
+    ctx: &BuiltinExecContext<'_>,
     instance_id: InstanceId,
     name: &str,
 ) -> Result<bool, RuntimeError> {
@@ -16,7 +17,7 @@ pub(super) fn read_bool(
 }
 
 pub(super) fn get_or_init_bool(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
     name: &str,
     default: bool,
@@ -33,7 +34,7 @@ pub(super) fn get_or_init_bool(
 }
 
 pub(super) fn write_bool(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
     name: &str,
     value: bool,
@@ -43,7 +44,7 @@ pub(super) fn write_bool(
 }
 
 pub(super) fn read_value(
-    ctx: &EvalContext<'_>,
+    ctx: &BuiltinExecContext<'_>,
     instance_id: InstanceId,
     name: &str,
 ) -> Result<Value, RuntimeError> {
@@ -54,7 +55,7 @@ pub(super) fn read_value(
 }
 
 pub(super) fn read_value_or_null(
-    ctx: &EvalContext<'_>,
+    ctx: &BuiltinExecContext<'_>,
     instance_id: InstanceId,
     name: &str,
 ) -> Value {
@@ -65,7 +66,7 @@ pub(super) fn read_value_or_null(
 }
 
 pub(super) fn set_instance_value(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
     name: &str,
     value: Value,

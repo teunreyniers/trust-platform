@@ -165,7 +165,7 @@ impl DebugAdapter {
                 return state;
             }
         }
-        if let Ok(runtime) = self.session.runtime_handle().lock() {
+        if let Ok(runtime) = self.session.runtime_handle().try_lock() {
             let mut state = io_state_from_snapshot(runtime.io().snapshot());
             self.apply_forced_flags(&mut state);
             return state;
@@ -179,7 +179,7 @@ impl DebugAdapter {
 
     pub(super) fn capture_io_state_from_runtime(&self) -> Option<IoStateEventBody> {
         let runtime_handle = self.session.runtime_handle();
-        let runtime = runtime_handle.lock().ok()?;
+        let runtime = runtime_handle.try_lock().ok()?;
         let mut body = io_state_from_snapshot(runtime.io().snapshot());
         self.apply_forced_flags(&mut body);
         if let Ok(mut cache) = self.last_io_state.lock() {

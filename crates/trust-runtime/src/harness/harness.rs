@@ -39,7 +39,12 @@ impl TestHarness {
 
     /// Creates a new test harness from source code.
     pub fn from_source(source: &str) -> Result<Self, CompileError> {
-        let runtime = CompileSession::from_source(source).build_runtime()?;
+        let session = CompileSession::from_source(source);
+        let mut runtime = session.build_runtime()?;
+        let bytecode = build_runtime_aligned_bytecode(&runtime, session.sources())?;
+        runtime
+            .apply_bytecode_bytes(&bytecode, None)
+            .map_err(|err| CompileError::new(err.to_string()))?;
         Ok(Self {
             runtime,
             cycle_count: 0,
@@ -49,7 +54,12 @@ impl TestHarness {
     /// Creates a new test harness from multiple source files.
     pub fn from_sources(sources: &[&str]) -> Result<Self, CompileError> {
         let source_files = sources.iter().copied().map(SourceFile::new).collect();
-        let runtime = CompileSession::from_sources(source_files).build_runtime()?;
+        let session = CompileSession::from_sources(source_files);
+        let mut runtime = session.build_runtime()?;
+        let bytecode = build_runtime_aligned_bytecode(&runtime, session.sources())?;
+        runtime
+            .apply_bytecode_bytes(&bytecode, None)
+            .map_err(|err| CompileError::new(err.to_string()))?;
         Ok(Self {
             runtime,
             cycle_count: 0,
@@ -242,6 +252,34 @@ impl TestHarness {
             .unwrap_or_else(|| panic!("missing variable '{name}'"));
         assert_eq!(value, expected.into());
     }
+}
+
+fn build_runtime_aligned_bytecode(
+    runtime: &Runtime,
+    sources: &[SourceFile],
+) -> Result<Vec<u8>, CompileError> {
+    let source_refs = sources
+        .iter()
+        .map(|source| source.text.as_str())
+        .collect::<Vec<_>>();
+    let module = if sources.iter().all(|source| source.path.is_some()) {
+        let paths = sources
+            .iter()
+            .map(|source| source.path.as_deref().unwrap_or_default())
+            .collect::<Vec<_>>();
+        crate::bytecode::BytecodeModule::from_runtime_with_sources_and_paths(
+            runtime,
+            &source_refs,
+            &paths,
+        )
+        .map_err(|err| CompileError::new(err.to_string()))?
+    } else {
+        crate::bytecode::BytecodeModule::from_runtime_with_sources(runtime, &source_refs)
+            .map_err(|err| CompileError::new(err.to_string()))?
+    };
+    module
+        .encode()
+        .map_err(|err| CompileError::new(err.to_string()))
 }
 
 impl TestHarness {

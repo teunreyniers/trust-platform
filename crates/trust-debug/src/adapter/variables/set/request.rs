@@ -78,9 +78,15 @@ impl DebugAdapter {
         }
         let mut events = Vec::new();
         let runtime_handle = self.session.runtime_handle();
-        let mut runtime = match runtime_handle.lock() {
+        let mut runtime = match runtime_handle.try_lock() {
             Ok(runtime) => runtime,
-            Err(poisoned) => poisoned.into_inner(),
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                return DispatchOutcome {
+                    responses: vec![self.error_response(&request, "runtime busy")],
+                    ..DispatchOutcome::default()
+                };
+            }
         };
 
         let apply_value =

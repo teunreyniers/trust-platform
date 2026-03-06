@@ -472,11 +472,11 @@ fn enum_literal_value(name: &str, type_id: TypeId, registry: &TypeRegistry) -> O
         let (variant_name, numeric_value) = values
             .iter()
             .find(|(variant, _)| variant.eq_ignore_ascii_case(name))?;
-        return Some(Value::Enum(EnumValue {
+        return Some(Value::Enum(Box::new(EnumValue {
             type_name: enum_name.clone(),
             variant_name: variant_name.clone(),
             numeric_value: *numeric_value,
-        }));
+        })));
     }
     None
 }

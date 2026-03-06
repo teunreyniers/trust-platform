@@ -79,6 +79,80 @@ END_PROGRAM
 }
 
 #[test]
+fn status_reports_execution_backend_selection_and_metrics_tag() {
+    let source = r#"
+PROGRAM Main
+VAR
+    run : BOOL := TRUE;
+END_VAR
+END_PROGRAM
+"#;
+    let state = hmi_test_state(source);
+
+    let status = handle_request_value(json!({"id": 30, "type": "status"}), &state, None);
+    assert!(status.ok, "status should succeed: {:?}", status.error);
+    let result = status.result.expect("status result");
+    assert_eq!(
+        result
+            .get("execution_backend")
+            .and_then(serde_json::Value::as_str),
+        Some("vm")
+    );
+    assert_eq!(
+        result
+            .get("execution_backend_source")
+            .and_then(serde_json::Value::as_str),
+        Some("default")
+    );
+    assert_eq!(
+        result
+            .get("metrics")
+            .and_then(|metrics| metrics.get("execution_backend"))
+            .and_then(serde_json::Value::as_str),
+        Some("vm")
+    );
+}
+
+#[test]
+fn status_and_config_get_report_same_backend_selection() {
+    let source = r#"
+PROGRAM Main
+VAR
+    run : BOOL := TRUE;
+END_VAR
+END_PROGRAM
+"#;
+    let state = hmi_test_state(source);
+
+    let status = handle_request_value(json!({"id": 31, "type": "status"}), &state, None);
+    assert!(status.ok, "status should succeed: {:?}", status.error);
+    let status_result = status.result.expect("status result");
+    let status_backend = status_result
+        .get("execution_backend")
+        .and_then(serde_json::Value::as_str)
+        .expect("status execution_backend");
+    let status_source = status_result
+        .get("execution_backend_source")
+        .and_then(serde_json::Value::as_str)
+        .expect("status execution_backend_source");
+
+    let config_get = handle_request_value(json!({"id": 32, "type": "config.get"}), &state, None);
+    assert!(config_get.ok, "config.get should succeed: {:?}", config_get.error);
+    let config_result = config_get.result.expect("config.get result");
+    let config_backend = config_result
+        .get("runtime.execution_backend")
+        .and_then(serde_json::Value::as_str)
+        .expect("config execution_backend");
+    let config_source = config_result
+        .get("runtime.execution_backend_source")
+        .and_then(serde_json::Value::as_str)
+        .expect("config execution_backend_source");
+
+    assert_eq!(status_backend, config_backend);
+    assert_eq!(status_source, config_source);
+}
+
+#[test]
 fn config_set_reports_field_level_diagnostics_for_unknown_and_type_errors() {
     let source = r#"
 PROGRAM Main
@@ -192,6 +266,45 @@ END_PROGRAM
         .as_deref()
         .unwrap_or_default()
         .contains("invalid config value for 'web.auth': token mode requires control.auth_token"));
+}
+
+#[test]
+fn config_set_rejects_runtime_backend_switch_during_live_control() {
+    let source = r#"
+PROGRAM Main
+VAR
+    run : BOOL := TRUE;
+END_VAR
+END_PROGRAM
+"#;
+    let state = hmi_test_state(source);
+
+    let response = handle_request_value(
+        json!({
+            "id": 24,
+            "type": "config.set",
+            "params": { "runtime.execution_backend": "vm" }
+        }),
+        &state,
+        None,
+    );
+    assert!(!response.ok);
+    assert_eq!(
+        response.error.as_deref(),
+        Some(
+            "runtime.execution_backend is startup-only; change backend via startup CLI/config and restart"
+        )
+    );
+
+    let status = handle_request_value(json!({"id": 25, "type": "status"}), &state, None);
+    assert!(status.ok, "status should succeed: {:?}", status.error);
+    let result = status.result.expect("status result");
+    assert_eq!(
+        result
+            .get("execution_backend")
+            .and_then(serde_json::Value::as_str),
+        Some("vm")
+    );
 }
 
 #[test]

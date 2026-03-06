@@ -166,12 +166,8 @@ END_PROGRAM
 }
 
 #[test]
-fn encoder_does_not_emit_partial_if_with_unsupported_elsif() {
+fn encoder_emits_if_with_string_literal_elsif_condition() {
     let source = r#"
-FUNCTION IsReady : BOOL
-IsReady := TRUE;
-END_FUNCTION
-
 PROGRAM Main
 VAR
     counter : INT := 0;
@@ -179,7 +175,7 @@ END_VAR
 
 IF counter < 1 THEN
     counter := counter + 1;
-ELSIF IsReady() THEN
+ELSIF "A" = "B" THEN
     counter := counter + 2;
 END_IF;
 END_PROGRAM
@@ -212,7 +208,16 @@ END_PROGRAM
     let code_start = program.code_offset as usize;
     let code_end = code_start + program.code_length as usize;
     let code = &bodies[code_start..code_end];
-    assert_eq!(code, &[0x00]);
+    assert_ne!(code, &[0x00]);
+    let opcodes = collect_opcodes(code);
+    assert!(
+        opcodes.contains(&0x10),
+        "expected LOAD_CONST opcode for string literals"
+    );
+    assert!(
+        opcodes.contains(&0x50),
+        "expected EQ opcode for string literal comparison"
+    );
 
     let _ = module.section(SectionId::DebugMap);
 }

@@ -23,21 +23,6 @@ impl DebugAdapter {
             };
         };
 
-        if self.remote_session.is_none() {
-            if let Some(current_thread) = self.session.debug_control().current_thread() {
-                if current_thread != args.thread_id {
-                    let body = StackTraceResponseBody {
-                        stack_frames: Vec::new(),
-                        total_frames: Some(0),
-                    };
-                    return DispatchOutcome {
-                        responses: vec![self.ok_response(&request, Some(body))],
-                        ..DispatchOutcome::default()
-                    };
-                }
-            }
-        }
-
         if let Some(remote) = self.remote_session.as_mut() {
             let mut stack_frames = remote.stack_trace().unwrap_or_default();
             for frame in &mut stack_frames {
@@ -78,19 +63,18 @@ impl DebugAdapter {
             .with_storage(|storage| storage.frames().to_vec())
             .unwrap_or_default();
         let mut stack_frames: Vec<StackFrame> = if frames.is_empty() {
-            if let Some((source, line, column)) = location.clone() {
-                vec![StackFrame {
-                    id: 0,
-                    name: "Main".to_string(),
-                    source,
-                    line,
-                    column,
-                    end_line: None,
-                    end_column: None,
-                }]
-            } else {
-                Vec::new()
-            }
+            let (source, line, column) = location
+                .clone()
+                .unwrap_or_else(|| (None, self.default_line(), self.default_column()));
+            vec![StackFrame {
+                id: 0,
+                name: "Main".to_string(),
+                source,
+                line,
+                column,
+                end_line: None,
+                end_column: None,
+            }]
         } else {
             frames
                 .iter()

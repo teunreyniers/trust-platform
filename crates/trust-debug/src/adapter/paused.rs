@@ -23,7 +23,8 @@ impl PausedStateView {
         if let Some(snapshot) = self.snapshot.as_ref() {
             return Some(f(&snapshot.storage));
         }
-        let guard = self.runtime.lock().ok()?;
+        // Avoid blocking when runtime execution is paused while holding the runtime mutex.
+        let guard = self.runtime.try_lock().ok()?;
         Some(f(guard.storage()))
     }
 

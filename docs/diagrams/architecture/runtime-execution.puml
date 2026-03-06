@@ -15,6 +15,7 @@ title truST Runtime: Bytecode, Scheduler, and Simulation Engine
 package "Runtime Core" as runtimeCore #LightGreen {
 
     class "Runtime" as runtime <<runtime/core.rs:22-44>> {
+        execution_backend: ExecutionBackend
         profile: DateTimeProfile
         storage: VariableStorage
         registry: TypeRegistry
@@ -23,6 +24,8 @@ package "Runtime Core" as runtimeCore #LightGreen {
         stdlib: StandardLibrary
         debug: Option<DebugControl>
         statement_index: IndexMap
+        source_text_index: IndexMap
+        source_label_index: HashMap
         metrics: MetricsSubsystem
         watchdog: WatchdogSubsystem
         faults: FaultSubsystem
@@ -44,7 +47,42 @@ package "Runtime Core" as runtimeCore #LightGreen {
         +execute_cycle() → Result<()>
         +apply_bytecode_metadata()
         +apply_bytecode_module()
+        +apply_online_change_bytes()
     }
+
+    component "online_change.rs\n(bytecode swap + warm-restart migration contract)" as runtimeOnlineChange
+    runtime ..> runtimeOnlineChange : hot-reload contract owner
+}
+
+package "Execution Backend Boundary" as backendPkg #LightYellow {
+    interface "RuntimeExecutionBackend\n(runtime/backend.rs)" as backendContract
+    component "InterpreterBackend" as interpBackend
+    component "BytecodeVmBackend\n(phase-gated)" as vmBackend
+
+    backendContract <|.. interpBackend
+    backendContract <|.. vmBackend
+    runtime ..> backendContract : program/FB dispatch
+
+    package "Bytecode VM Core\n(runtime/vm/*)" as vmCore #LightCyan {
+        component "dispatch.rs\n(PC loop + op dispatch + debug hook emit)" as vmDispatch
+        component "dispatch_ops.rs\n(opcode math/operand/jump helpers)" as vmDispatchOps
+        component "dispatch_refs.rs\n(ref/deref + storage bridge)" as vmDispatchRefs
+        component "dispatch_sizeof.rs\n(TYPE_TABLE sizeof helpers)" as vmDispatchSizeOf
+        component "stack.rs\n(operand stack invariants)" as vmStack
+        component "frames.rs + call.rs\n(frame stack + CALL_NATIVE dispatch bridge)" as vmFrames
+        component "errors.rs\n(trap -> RuntimeError)" as vmErrors
+        component "debug_map.rs\n(symbol/source mappings + pc->source)" as vmDebugMap
+    }
+
+    vmBackend --> vmDispatch
+    vmDispatch ..> vmStack
+    vmDispatch ..> vmFrames
+    vmDispatch ..> vmErrors
+    vmDispatch ..> vmDebugMap
+    vmDispatch ..> vmDispatchOps
+    vmDispatch ..> vmDispatchRefs
+    vmDispatch ..> vmDispatchSizeOf
+    vmDispatch ..> runtime : resolve vm debug source labels/offsets
 }
 
 ' ============================================================
@@ -128,6 +166,7 @@ package "Execution Cycle" as cyclePkg #LightBlue {
         execute_task():
         • emits TaskStart event
         • runs programs + FB refs
+        • dispatches via backend boundary
         • emits TaskEnd event
         • task → DAP thread id
     end note
@@ -165,6 +204,17 @@ package "Lifecycle" as lifecyclePkg #LightGray {
         card "1. stop tasks" as stop1
         card "2. save_retain()" as stop2
     }
+
+    rectangle "online_change()" as onlineChangeFlow #Wheat {
+        card "1. queue ReloadBytecode command" as online1
+        card "2. scheduler applies swap at cycle boundary" as online2
+        card "3. apply_online_change_bytes()" as online3
+        card "4. warm restart + retain reload\n(restart-entrypoint IP policy)" as online4
+    }
+
+    online1 --> online2
+    online2 --> online3
+    online3 --> online4
 }
 
 ' ============================================================

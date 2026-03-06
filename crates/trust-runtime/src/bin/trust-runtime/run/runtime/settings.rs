@@ -4,6 +4,8 @@ fn build_runtime_settings(
     default_watchdog: trust_runtime::watchdog::WatchdogPolicy,
     default_fault: trust_runtime::watchdog::FaultPolicy,
     simulation: &SimulationPlan,
+    execution_backend: trust_runtime::execution_backend::ExecutionBackend,
+    execution_backend_source: trust_runtime::execution_backend::ExecutionBackendSource,
 ) -> RuntimeSettings {
     let mut settings = if let Some(bundle) = bundle {
         RuntimeSettings::new(
@@ -122,6 +124,8 @@ fn build_runtime_settings(
         settings.runtime_cloud.link_preferences =
             bundle.runtime.runtime_cloud_link_preferences.clone();
     }
+    settings.execution_backend = execution_backend;
+    settings.execution_backend_source = execution_backend_source;
 
     settings
 }

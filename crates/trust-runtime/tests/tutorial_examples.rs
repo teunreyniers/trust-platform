@@ -1,9 +1,11 @@
 use std::path::{Path, PathBuf};
 
+#[cfg(feature = "legacy-interpreter")]
+use trust_runtime::execution_backend::ExecutionBackend;
 use trust_runtime::harness::{
     bytecode_module_from_source_with_path, bytecode_module_from_sources_with_paths, TestHarness,
 };
-use trust_runtime::value::Duration;
+use trust_runtime::value::{Duration, Value};
 
 const HELLO_COUNTER: &str = include_str!("../../../examples/tutorials/01_hello_counter.st");
 const BLINKER: &str = include_str!("../../../examples/tutorials/02_blinker.st");
@@ -219,6 +221,11 @@ fn visual_examples_compile_generated_companion_and_runtime_entry() {
 #[test]
 fn tutorial_blinker_ton_timing_behavior() {
     let mut harness = TestHarness::from_source(BLINKER).expect("compile blinker tutorial");
+    #[cfg(feature = "legacy-interpreter")]
+    harness
+        .runtime_mut()
+        .set_execution_backend(ExecutionBackend::Interpreter)
+        .expect("switch to interpreter backend");
 
     harness.cycle();
     harness.assert_eq("lamp", false);
@@ -243,34 +250,68 @@ fn advance_traffic_phase(harness: &mut TestHarness) {
     harness.cycle();
 }
 
+fn traffic_state(harness: &TestHarness) -> (Option<Value>, Option<Value>, Option<Value>) {
+    (
+        harness.get_output("red"),
+        harness.get_output("yellow"),
+        harness.get_output("green"),
+    )
+}
+
 #[test]
 fn tutorial_traffic_light_state_sequence() {
     let mut harness = TestHarness::from_source(TRAFFIC_LIGHT).expect("compile traffic tutorial");
+    #[cfg(feature = "legacy-interpreter")]
+    harness
+        .runtime_mut()
+        .set_execution_backend(ExecutionBackend::Interpreter)
+        .expect("switch to interpreter backend");
 
     harness.cycle();
-    harness.assert_eq("red", true);
-    harness.assert_eq("yellow", false);
-    harness.assert_eq("green", false);
+    let s0 = traffic_state(&harness);
 
     advance_traffic_phase(&mut harness);
-    harness.assert_eq("red", true);
-    harness.assert_eq("yellow", true);
-    harness.assert_eq("green", false);
+    let s1 = traffic_state(&harness);
 
     advance_traffic_phase(&mut harness);
-    harness.assert_eq("red", false);
-    harness.assert_eq("yellow", false);
-    harness.assert_eq("green", true);
+    let s2 = traffic_state(&harness);
 
     advance_traffic_phase(&mut harness);
-    harness.assert_eq("red", false);
-    harness.assert_eq("yellow", true);
-    harness.assert_eq("green", false);
+    let s3 = traffic_state(&harness);
 
     advance_traffic_phase(&mut harness);
-    harness.assert_eq("red", true);
-    harness.assert_eq("yellow", false);
-    harness.assert_eq("green", false);
+    let s4 = traffic_state(&harness);
+
+    assert_eq!(
+        [s0, s1, s2, s3, s4],
+        [
+            (
+                Some(Value::Bool(true)),
+                Some(Value::Bool(false)),
+                Some(Value::Bool(false))
+            ),
+            (
+                Some(Value::Bool(true)),
+                Some(Value::Bool(true)),
+                Some(Value::Bool(false))
+            ),
+            (
+                Some(Value::Bool(false)),
+                Some(Value::Bool(false)),
+                Some(Value::Bool(true))
+            ),
+            (
+                Some(Value::Bool(false)),
+                Some(Value::Bool(true)),
+                Some(Value::Bool(false))
+            ),
+            (
+                Some(Value::Bool(true)),
+                Some(Value::Bool(false)),
+                Some(Value::Bool(false))
+            )
+        ]
+    );
 }
 
 #[test]

@@ -8,6 +8,14 @@ pub fn render_prometheus(
     body.push_str("# TYPE trust_runtime_uptime_ms gauge\n");
     let _ = writeln!(body, "trust_runtime_uptime_ms {}", runtime.uptime_ms);
 
+    body.push_str("# HELP trust_runtime_execution_backend_info Active runtime execution backend label.\n");
+    body.push_str("# TYPE trust_runtime_execution_backend_info gauge\n");
+    let _ = writeln!(
+        body,
+        "trust_runtime_execution_backend_info{{backend=\"{}\"}} 1",
+        escape_label(runtime.execution_backend.as_str())
+    );
+
     body.push_str("# HELP trust_runtime_faults_total Runtime fault count.\n");
     body.push_str("# TYPE trust_runtime_faults_total counter\n");
     let _ = writeln!(body, "trust_runtime_faults_total {}", runtime.faults);

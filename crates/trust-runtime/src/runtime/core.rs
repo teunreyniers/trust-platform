@@ -5,6 +5,7 @@
 use crate::debug::DebugControl;
 use crate::eval::expr::Expr;
 use crate::eval::{ClassDef, EvalContext, FunctionBlockDef, FunctionDef, InterfaceDef};
+use crate::execution_backend::ExecutionBackend;
 use crate::io::{IoDriver, IoDriverStatus, IoInterface, IoSafeState};
 use crate::memory::{AccessMap, FrameId, InstanceId, VariableStorage};
 use crate::metrics::RuntimeMetrics;
@@ -16,6 +17,8 @@ use crate::watchdog::{FaultDecision, FaultPolicy, WatchdogPolicy};
 use crate::{error, eval, stdlib};
 use indexmap::IndexMap;
 use smol_str::SmolStr;
+use std::collections::HashMap;
+use std::sync::Arc;
 use trust_hir::types::TypeRegistry;
 use trust_hir::Type;
 
@@ -28,6 +31,8 @@ use super::watchdog_subsystem::WatchdogSubsystem;
 
 /// Minimal runtime entry point (extended later).
 pub struct Runtime {
+    pub(super) execution_backend: ExecutionBackend,
+    pub(super) vm_module: Option<Arc<super::vm::VmModule>>,
     pub(super) profile: DateTimeProfile,
     pub(super) storage: VariableStorage,
     pub(super) registry: TypeRegistry,
@@ -36,6 +41,8 @@ pub struct Runtime {
     pub(super) stdlib: StandardLibrary,
     pub(super) debug: Option<DebugControl>,
     pub(super) statement_index: IndexMap<u32, Vec<crate::debug::SourceLocation>>,
+    pub(super) source_text_index: IndexMap<u32, String>,
+    pub(super) source_label_index: HashMap<SmolStr, u32>,
     pub(super) functions: IndexMap<SmolStr, FunctionDef>,
     pub(super) function_blocks: IndexMap<SmolStr, FunctionBlockDef>,
     pub(super) classes: IndexMap<SmolStr, ClassDef>,
@@ -54,11 +61,16 @@ pub struct Runtime {
     pub(super) watchdog: WatchdogSubsystem,
     pub(super) faults: FaultSubsystem,
     pub(super) execution_deadline: Option<std::time::Instant>,
+    pub(super) vm_register_lowering_cache: super::vm::RegisterLoweringCacheState,
+    pub(super) vm_register_profile: super::vm::RegisterProfileState,
+    pub(super) vm_tier1_specialized_executor: super::vm::RegisterTier1SpecializedExecutorState,
 }
 
 impl std::fmt::Debug for Runtime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Runtime")
+            .field("execution_backend", &self.execution_backend)
+            .field("vm_module_loaded", &self.vm_module.is_some())
             .field("profile", &self.profile)
             .field("storage", &self.storage)
             .field("registry", &self.registry)
@@ -79,6 +91,14 @@ impl std::fmt::Debug for Runtime {
             .field("cycle_counter", &self.cycle_counter)
             .field("faulted", &self.faults.is_faulted())
             .field("last_fault", &self.faults.last_fault())
+            .field(
+                "vm_register_lowering_cache_enabled",
+                &self.vm_register_lowering_cache.snapshot().enabled,
+            )
+            .field(
+                "vm_tier1_specialized_executor_enabled",
+                &self.vm_tier1_specialized_executor.snapshot().enabled,
+            )
             .finish()
     }
 }

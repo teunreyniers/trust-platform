@@ -1,8 +1,8 @@
 use crate::error::RuntimeError;
-use crate::eval::EvalContext;
 use crate::memory::InstanceId;
 
 use super::instance::{read_bool, write_bool};
+use super::BuiltinExecContext;
 
 #[derive(Debug, Clone)]
 pub struct Sr {
@@ -59,7 +59,7 @@ impl Default for Rs {
 }
 
 pub(super) fn exec_rs(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
 ) -> Result<(), RuntimeError> {
     let set = read_bool(ctx, instance_id, "S")?;
@@ -75,7 +75,7 @@ pub(super) fn exec_rs(
 }
 
 pub(super) fn exec_sr(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
 ) -> Result<(), RuntimeError> {
     let set = read_bool(ctx, instance_id, "S1")?;

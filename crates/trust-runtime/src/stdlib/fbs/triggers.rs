@@ -1,9 +1,9 @@
 use crate::error::RuntimeError;
-use crate::eval::EvalContext;
 use crate::memory::InstanceId;
 
 use super::instance::{get_or_init_bool, read_bool, write_bool};
 use super::state::STATE_TRIG_M;
+use super::BuiltinExecContext;
 
 #[derive(Debug, Clone)]
 pub struct RTrig {
@@ -55,7 +55,7 @@ impl Default for FTrig {
 }
 
 pub(super) fn exec_r_trig(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
 ) -> Result<(), RuntimeError> {
     let clk = read_bool(ctx, instance_id, "CLK")?;
@@ -67,7 +67,7 @@ pub(super) fn exec_r_trig(
 }
 
 pub(super) fn exec_f_trig(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
 ) -> Result<(), RuntimeError> {
     let clk = read_bool(ctx, instance_id, "CLK")?;

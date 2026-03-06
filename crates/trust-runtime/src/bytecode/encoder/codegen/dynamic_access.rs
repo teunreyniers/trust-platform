@@ -6,6 +6,9 @@ impl<'a> BytecodeEncoder<'a> {
         value: &crate::eval::expr::Expr,
         code: &mut Vec<u8>,
     ) -> Result<bool, BytecodeError> {
+        if let Some(emitted) = self.emit_partial_assign(ctx, target, value, code)? {
+            return Ok(emitted);
+        }
         if let Some(emitted) = self.emit_dynamic_assign(ctx, target, value, code)? {
             return Ok(emitted);
         }
@@ -14,17 +17,48 @@ impl<'a> BytecodeEncoder<'a> {
             code.truncate(start_len);
             return Ok(false);
         }
-        let reference = match self.resolve_lvalue_ref(ctx, target)? {
-            Some(reference) => reference,
-            None => {
-                code.truncate(start_len);
-                return Ok(false);
-            }
-        };
-        let ref_idx = self.ref_index_for(&reference)?;
-        code.push(0x21);
-        code.extend_from_slice(&ref_idx.to_le_bytes());
+        if let Some(reference) = self.resolve_lvalue_ref(ctx, target)? {
+            let ref_idx = self.ref_index_for(&reference)?;
+            code.push(0x21);
+            code.extend_from_slice(&ref_idx.to_le_bytes());
+            return Ok(true);
+        }
+        if !self.emit_dynamic_ref_for_lvalue(ctx, target, code)? {
+            code.truncate(start_len);
+            return Ok(false);
+        }
+        code.push(0x13); // SWAP
+        code.push(0x33); // STORE
         Ok(true)
+    }
+
+    fn emit_partial_assign(
+        &mut self,
+        ctx: &CodegenContext,
+        target: &crate::eval::expr::LValue,
+        value: &crate::eval::expr::Expr,
+        code: &mut Vec<u8>,
+    ) -> Result<Option<bool>, BytecodeError> {
+        let crate::eval::expr::LValue::Field { name, field } = target else {
+            return Ok(None);
+        };
+        let Some(partial) = crate::value::parse_partial_access(field.as_str()) else {
+            return Ok(None);
+        };
+
+        let start_len = code.len();
+        let Some(reference) = self.resolve_name_ref(ctx, name)? else {
+            code.truncate(start_len);
+            return Ok(Some(false));
+        };
+        self.emit_load_ref(&reference, code)?;
+        if !self.emit_expr(ctx, value, code)? {
+            code.truncate(start_len);
+            return Ok(Some(false));
+        }
+        self.emit_partial_write(partial, code);
+        self.emit_store_ref(&reference, code)?;
+        Ok(Some(true))
     }
 
     fn emit_dynamic_assign(
@@ -59,9 +93,9 @@ impl<'a> BytecodeEncoder<'a> {
     ) -> Result<bool, BytecodeError> {
         use crate::eval::expr::LValue;
         match target {
-            LValue::Name(name) => self.emit_self_field_ref(ctx, name, code),
+            LValue::Name(name) => self.emit_ref_for_name(ctx, name, code),
             LValue::Field { name, field } => {
-                if !self.emit_self_field_ref(ctx, name, code)? {
+                if !self.emit_ref_for_name(ctx, name, code)? {
                     return Ok(false);
                 }
                 let field_idx = self.strings.intern(field.clone());
@@ -70,7 +104,7 @@ impl<'a> BytecodeEncoder<'a> {
                 Ok(true)
             }
             LValue::Index { name, indices } => {
-                if !self.emit_self_field_ref(ctx, name, code)? {
+                if !self.emit_ref_for_name(ctx, name, code)? {
                     return Ok(false);
                 }
                 for index in indices {
@@ -81,7 +115,7 @@ impl<'a> BytecodeEncoder<'a> {
                 }
                 Ok(true)
             }
-            LValue::Deref(_) => Ok(false),
+            LValue::Deref(expr) => self.emit_expr(ctx, expr, code),
         }
     }
 
@@ -166,6 +200,25 @@ impl<'a> BytecodeEncoder<'a> {
         Ok(true)
     }
 
+    fn emit_ref_for_name(
+        &mut self,
+        ctx: &CodegenContext,
+        name: &SmolStr,
+        code: &mut Vec<u8>,
+    ) -> Result<bool, BytecodeError> {
+        if ctx.local_ref(name).is_none() && self.emit_self_field_ref(ctx, name, code)? {
+            return Ok(true);
+        }
+        let reference = match self.resolve_name_ref(ctx, name)? {
+            Some(reference) => reference,
+            None => return Ok(false),
+        };
+        let ref_idx = self.ref_index_for(&reference)?;
+        code.push(0x22);
+        code.extend_from_slice(&ref_idx.to_le_bytes());
+        Ok(true)
+    }
+
     fn emit_dynamic_load_field(
         &mut self,
         ctx: &CodegenContext,
@@ -181,6 +234,48 @@ impl<'a> BytecodeEncoder<'a> {
         code.extend_from_slice(&field_idx.to_le_bytes());
         code.push(0x32);
         Ok(true)
+    }
+
+    fn emit_partial_read_for_name(
+        &mut self,
+        ctx: &CodegenContext,
+        name: &SmolStr,
+        access: crate::value::PartialAccess,
+        code: &mut Vec<u8>,
+    ) -> Result<bool, BytecodeError> {
+        let Some(reference) = self.resolve_name_ref(ctx, name)? else {
+            return Ok(false);
+        };
+        self.emit_load_ref(&reference, code)?;
+        self.emit_partial_read(access, code);
+        Ok(true)
+    }
+
+    fn emit_partial_read(
+        &self,
+        access: crate::value::PartialAccess,
+        code: &mut Vec<u8>,
+    ) {
+        code.push(0x62); // PARTIAL_READ
+        code.extend_from_slice(&Self::partial_access_operand(access).to_le_bytes());
+    }
+
+    fn emit_partial_write(
+        &self,
+        access: crate::value::PartialAccess,
+        code: &mut Vec<u8>,
+    ) {
+        code.push(0x63); // PARTIAL_WRITE
+        code.extend_from_slice(&Self::partial_access_operand(access).to_le_bytes());
+    }
+
+    fn partial_access_operand(access: crate::value::PartialAccess) -> u32 {
+        match access {
+            crate::value::PartialAccess::Bit(index) => u32::from(index),
+            crate::value::PartialAccess::Byte(index) => 0x0100 | u32::from(index),
+            crate::value::PartialAccess::Word(index) => 0x0200 | u32::from(index),
+            crate::value::PartialAccess::DWord(index) => 0x0300 | u32::from(index),
+        }
     }
 
     fn emit_dynamic_load_index(

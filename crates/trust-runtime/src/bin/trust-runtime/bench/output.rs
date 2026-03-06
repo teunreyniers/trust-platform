@@ -49,6 +49,110 @@ fn render_table(report: &BenchReport) -> String {
             );
             render_histogram(&mut out, data.histogram.as_slice());
         }
+        #[cfg(feature = "legacy-interpreter")]
+        BenchReport::ExecutionBackend(data) => {
+            let _ = writeln!(out, "Benchmark: {}", data.scenario);
+            let _ = writeln!(
+                out,
+                "corpus={} cycles_per_fixture={} warmup_cycles={}",
+                data.corpus, data.cycles_per_fixture, data.warmup_cycles
+            );
+            for fixture in &data.fixtures {
+                let _ = writeln!(out, "fixture={}", fixture.fixture);
+                render_latency_block(
+                    &mut out,
+                    "  interpreter latency",
+                    &fixture.interpreter.latency,
+                );
+                let _ = writeln!(
+                    out,
+                    "  interpreter throughput={:.3} cycles/sec",
+                    fixture.interpreter.throughput_cycles_per_sec
+                );
+                render_latency_block(&mut out, "  vm latency", &fixture.vm.latency);
+                let _ = writeln!(
+                    out,
+                    "  vm throughput={:.3} cycles/sec",
+                    fixture.vm.throughput_cycles_per_sec
+                );
+                let _ = writeln!(
+                    out,
+                    "  ratios vm/interpreter: median={:.4} p99={:.4} throughput={:.4}",
+                    fixture.median_latency_ratio, fixture.p99_latency_ratio, fixture.throughput_ratio
+                );
+                if let Some(vm_profile) = &fixture.vm_profile {
+                    let _ = writeln!(
+                        out,
+                        "  vm profile: executed={} fallbacks={} overhead={:.4}",
+                        vm_profile.register_programs_executed,
+                        vm_profile.register_program_fallbacks,
+                        vm_profile.profiling_overhead_ratio
+                    );
+                    for block in vm_profile.hot_blocks.iter().take(3) {
+                        let _ = writeln!(
+                            out,
+                            "    hot block pou={} block={} pc={} hits={}",
+                            block.pou_id, block.block_id, block.start_pc, block.hits
+                        );
+                    }
+                    let lowering_cache = &vm_profile.register_lowering_cache;
+                    let _ = writeln!(
+                        out,
+                        "  register-lowering-cache: enabled={} cache={}/{} hits={} misses={} hit_ratio={:.4} build_errors={} evictions={} invalidations={}",
+                        lowering_cache.enabled,
+                        lowering_cache.cached_entries,
+                        lowering_cache.cache_capacity,
+                        lowering_cache.hits,
+                        lowering_cache.misses,
+                        lowering_cache.hit_ratio,
+                        lowering_cache.build_errors,
+                        lowering_cache.cache_evictions,
+                        lowering_cache.invalidations
+                    );
+                    if let Some(tier1) = &vm_profile.tier1_specialized_executor {
+                        let _ = writeln!(
+                            out,
+                            "  tier1-specialized-executor: enabled={} threshold={} cache={}/{} compile={}/{}/{} evictions={} executions={} deopts={}",
+                            tier1.enabled,
+                            tier1.hot_block_threshold,
+                            tier1.cached_blocks,
+                            tier1.cache_capacity,
+                            tier1.compile_attempts,
+                            tier1.compile_successes,
+                            tier1.compile_failures,
+                            tier1.cache_evictions,
+                            tier1.block_executions,
+                            tier1.deopt_count
+                        );
+                    } else {
+                        let _ = writeln!(out, "  tier1-specialized-executor: disabled");
+                    }
+                }
+            }
+            let aggregate = &data.aggregate;
+            let _ = writeln!(out, "aggregate:");
+            render_latency_block(
+                &mut out,
+                "  interpreter latency",
+                &aggregate.interpreter.latency,
+            );
+            let _ = writeln!(
+                out,
+                "  interpreter throughput={:.3} cycles/sec",
+                aggregate.interpreter.throughput_cycles_per_sec
+            );
+            render_latency_block(&mut out, "  vm latency", &aggregate.vm.latency);
+            let _ = writeln!(
+                out,
+                "  vm throughput={:.3} cycles/sec",
+                aggregate.vm.throughput_cycles_per_sec
+            );
+            let _ = writeln!(
+                out,
+                "  ratios vm/interpreter: median={:.4} p99={:.4} throughput={:.4}",
+                aggregate.median_latency_ratio, aggregate.p99_latency_ratio, aggregate.throughput_ratio
+            );
+        }
     }
     out
 }

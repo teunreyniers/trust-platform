@@ -240,10 +240,10 @@ pub fn variable_from_value(
     let mut variables_reference = 0;
     match &value {
         Value::Struct(value) => {
-            variables_reference = handles.alloc(VariableHandle::Struct(value.clone()));
+            variables_reference = handles.alloc(VariableHandle::Struct((**value).clone()));
         }
         Value::Array(value) => {
-            variables_reference = handles.alloc(VariableHandle::Array(value.clone()));
+            variables_reference = handles.alloc(VariableHandle::Array((**value).clone()));
         }
         Value::Instance(id) => {
             variables_reference = handles.alloc(VariableHandle::Instance(*id));

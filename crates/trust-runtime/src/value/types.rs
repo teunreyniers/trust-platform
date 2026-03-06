@@ -67,9 +67,9 @@ pub enum Value {
     Char(u8),
     WChar(u16),
 
-    Array(ArrayValue),
-    Struct(StructValue),
-    Enum(EnumValue),
+    Array(Box<ArrayValue>),
+    Struct(Box<StructValue>),
+    Enum(Box<EnumValue>),
 
     Reference(Option<ValueRef>),
     Instance(InstanceId),

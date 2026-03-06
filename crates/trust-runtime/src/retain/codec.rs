@@ -257,10 +257,10 @@ fn decode_value(reader: &mut RetainReader<'_>) -> Result<Value, RuntimeError> {
             for _ in 0..len {
                 elements.push(decode_value(reader)?);
             }
-            Value::Array(ArrayValue {
+            Value::Array(Box::new(ArrayValue {
                 elements,
                 dimensions,
-            })
+            }))
         }
         x if x == ValueTag::Struct as u8 => {
             let type_name = SmolStr::new(reader.read_string()?);
@@ -271,17 +271,17 @@ fn decode_value(reader: &mut RetainReader<'_>) -> Result<Value, RuntimeError> {
                 let value = decode_value(reader)?;
                 fields.insert(name, value);
             }
-            Value::Struct(StructValue { type_name, fields })
+            Value::Struct(Box::new(StructValue { type_name, fields }))
         }
         x if x == ValueTag::Enum as u8 => {
             let type_name = SmolStr::new(reader.read_string()?);
             let variant_name = SmolStr::new(reader.read_string()?);
             let numeric_value = reader.read_i64()?;
-            Value::Enum(EnumValue {
+            Value::Enum(Box::new(EnumValue {
                 type_name,
                 variant_name,
                 numeric_value,
-            })
+            }))
         }
         x if x == ValueTag::Null as u8 => Value::Null,
         _ => return Err(RuntimeError::RetainStore("unknown retain value tag".into())),

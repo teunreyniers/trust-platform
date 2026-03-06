@@ -3,8 +3,11 @@ import * as vscode from "vscode";
 
 import { HmiWidgetSchema } from "./types";
 
-const SEARCH_GLOB = "**/*.{st,ST,pou,POU}";
+const SEARCH_GLOBS = ["**/*.st", "**/*.ST", "**/*.pou", "**/*.POU"] as const;
 const SEARCH_EXCLUDE = "**/{.git,node_modules,target,.vscode-test}/**";
+const EXCLUDED_DIRS = new Set([".git", "node_modules", "target", ".vscode-test"]);
+const SOURCE_EXTENSIONS = new Set([".st", ".pou"]);
+const SOURCE_SCAN_LIMIT = 4000;
 
 type HmiWidgetLocation = {
   file: string;
@@ -93,7 +96,7 @@ async function findProgramVariable(
   programName: string,
   variableName: string
 ): Promise<vscode.Location | undefined> {
-  const files = await vscode.workspace.findFiles(SEARCH_GLOB, SEARCH_EXCLUDE, 2000);
+  const files = await findSourceFiles();
   for (const uri of files) {
     const doc = await vscode.workspace.openTextDocument(uri);
     const position = findProgramVarPosition(doc.getText(), programName, variableName);
@@ -105,7 +108,7 @@ async function findProgramVariable(
 }
 
 async function findGlobalVariable(name: string): Promise<vscode.Location | undefined> {
-  const files = await vscode.workspace.findFiles(SEARCH_GLOB, SEARCH_EXCLUDE, 2000);
+  const files = await findSourceFiles();
   for (const uri of files) {
     const doc = await vscode.workspace.openTextDocument(uri);
     const position = findGlobalVarPosition(doc.getText(), name);
@@ -114,6 +117,73 @@ async function findGlobalVariable(name: string): Promise<vscode.Location | undef
     }
   }
   return undefined;
+}
+
+async function findSourceFiles(): Promise<vscode.Uri[]> {
+  const seen = new Set<string>();
+  const files: vscode.Uri[] = [];
+  for (const glob of SEARCH_GLOBS) {
+    const matches = await vscode.workspace.findFiles(glob, SEARCH_EXCLUDE, 2000);
+    for (const uri of matches) {
+      const key = uri.toString();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      files.push(uri);
+    }
+  }
+
+  if (files.length > 0) {
+    return files;
+  }
+
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    await collectSourceFiles(folder.uri, files, seen);
+    if (files.length >= SOURCE_SCAN_LIMIT) {
+      break;
+    }
+  }
+  return files;
+}
+
+async function collectSourceFiles(
+  dir: vscode.Uri,
+  files: vscode.Uri[],
+  seen: Set<string>
+): Promise<void> {
+  let entries: [string, vscode.FileType][];
+  try {
+    entries = await vscode.workspace.fs.readDirectory(dir);
+  } catch {
+    return;
+  }
+
+  for (const [name, type] of entries) {
+    if (files.length >= SOURCE_SCAN_LIMIT) {
+      return;
+    }
+    const child = vscode.Uri.joinPath(dir, name);
+    if (type === vscode.FileType.Directory) {
+      if (EXCLUDED_DIRS.has(name)) {
+        continue;
+      }
+      await collectSourceFiles(child, files, seen);
+      continue;
+    }
+    if (type !== vscode.FileType.File) {
+      continue;
+    }
+    if (!SOURCE_EXTENSIONS.has(path.extname(name).toLowerCase())) {
+      continue;
+    }
+    const key = child.toString();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    files.push(child);
+  }
 }
 
 function findProgramVarPosition(

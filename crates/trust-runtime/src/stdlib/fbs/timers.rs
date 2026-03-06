@@ -1,10 +1,10 @@
 use crate::error::RuntimeError;
-use crate::eval::EvalContext;
 use crate::memory::InstanceId;
 use crate::value::{Duration, Value};
 
 use super::instance::{get_or_init_bool, read_bool, write_bool};
 use super::state::{STATE_ACTIVE, STATE_LAST_TIME, STATE_PREV_IN, STATE_TIMING};
+use super::BuiltinExecContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TimerOutput {
@@ -160,7 +160,7 @@ impl Default for Tp {
 }
 
 pub(super) fn exec_ton(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
 ) -> Result<(), RuntimeError> {
     let input = read_bool(ctx, instance_id, "IN")?;
@@ -176,7 +176,7 @@ pub(super) fn exec_ton(
 }
 
 pub(super) fn exec_tof(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
 ) -> Result<(), RuntimeError> {
     let input = read_bool(ctx, instance_id, "IN")?;
@@ -201,7 +201,7 @@ pub(super) fn exec_tof(
 }
 
 pub(super) fn exec_tp(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
 ) -> Result<(), RuntimeError> {
     let input = read_bool(ctx, instance_id, "IN")?;
@@ -234,7 +234,7 @@ fn normalize_duration(value: Duration) -> Duration {
 }
 
 fn read_time_input(
-    ctx: &EvalContext<'_>,
+    ctx: &BuiltinExecContext<'_>,
     instance_id: InstanceId,
     name: &str,
 ) -> Result<(Duration, bool), RuntimeError> {
@@ -247,7 +247,7 @@ fn read_time_input(
 }
 
 fn read_time_value(
-    ctx: &EvalContext<'_>,
+    ctx: &BuiltinExecContext<'_>,
     instance_id: InstanceId,
     name: &str,
 ) -> Result<Duration, RuntimeError> {
@@ -259,7 +259,7 @@ fn read_time_value(
 }
 
 fn write_time_value(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
     name: &str,
     value: Duration,
@@ -274,7 +274,7 @@ fn write_time_value(
 }
 
 fn elapsed_since(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
 ) -> Result<Duration, RuntimeError> {
     let last = get_or_init_duration(ctx, instance_id, STATE_LAST_TIME, ctx.now)?;
@@ -289,7 +289,7 @@ fn elapsed_since(
 }
 
 fn get_or_init_duration(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
     name: &str,
     default: Duration,
@@ -305,7 +305,7 @@ fn get_or_init_duration(
 }
 
 fn set_internal_duration(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
     name: &str,
     value: Duration,

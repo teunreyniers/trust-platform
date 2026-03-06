@@ -10,6 +10,7 @@ pub fn run_runtime(
     beginner: bool,
     simulation: bool,
     time_scale: u32,
+    execution_backend: Option<crate::cli::ExecutionBackendArg>,
 ) -> anyhow::Result<()> {
     let restart_mode = parse_restart_mode(&restart)?;
     let LoadedRuntime {
@@ -18,6 +19,8 @@ pub fn run_runtime(
         sources,
         ide_shell_mode,
     } = load_runtime(project, config, runtime_root)?;
+    let (selected_execution_backend, selected_execution_backend_source) =
+        resolve_execution_backend_selection(bundle.as_ref(), execution_backend)?;
 
     let simulation = build_simulation_plan(bundle.as_ref(), simulation, time_scale)?;
     let SimulationPlan {
@@ -29,6 +32,9 @@ pub fn run_runtime(
 
     let debug = runtime.enable_debug();
     let metrics = Arc::new(Mutex::new(RuntimeMetrics::new()));
+    if let Ok(mut guard) = metrics.lock() {
+        guard.set_execution_backend(selected_execution_backend);
+    }
     runtime.set_metrics_sink(metrics.clone());
     let io_health = Arc::new(Mutex::new(Vec::new()));
     runtime.set_io_health_sink(Some(io_health.clone()));
@@ -49,6 +55,9 @@ pub fn run_runtime(
     if let Some(bundle) = &bundle {
         apply_bundle_runtime_overrides(&mut runtime, bundle)?;
     }
+    runtime
+        .set_execution_backend(selected_execution_backend)
+        .map_err(|err| anyhow::anyhow!("{err}"))?;
 
     runtime.restart(restart_mode)?;
     runtime.load_retain_store()?;
@@ -61,6 +70,14 @@ pub fn run_runtime(
         Some(bundle) => LogLevel::parse(bundle.runtime.log_level.as_str()),
         None => LogLevel::Info,
     });
+    logger.log(
+        LogLevel::Info,
+        "execution_backend_selected",
+        json!({
+            "backend": selected_execution_backend.as_str(),
+            "source": selected_execution_backend_source.as_str(),
+        }),
+    );
 
     let metadata = Arc::new(Mutex::new(runtime.metadata_snapshot()));
     let events = Arc::new(Mutex::new(VecDeque::new()));
@@ -120,6 +137,8 @@ pub fn run_runtime(
             warning: simulation_warning.clone(),
             controller: None,
         },
+        selected_execution_backend,
+        selected_execution_backend_source,
     );
     let auth_token_value = control_auth_token_value(bundle.as_ref());
     let web_config = resolve_web_config(bundle.as_ref(), &settings);
@@ -281,6 +300,8 @@ pub fn run_runtime(
             simulation_enabled,
             simulation_time_scale,
             startup_hmi_scaffold.as_ref(),
+            selected_execution_backend,
+            selected_execution_backend_source,
         );
     }
 
@@ -318,6 +339,10 @@ pub fn run_runtime(
                 opcua_server.as_ref().map(|server| server.endpoint_url()),
                 simulation_enabled,
                 simulation_time_scale,
+                (
+                    selected_execution_backend,
+                    selected_execution_backend_source,
+                ),
             );
         }
         logger.log(
@@ -372,6 +397,8 @@ pub fn run_runtime(
                 "opcua_exposed_patterns": bundle.runtime.opcua.expose.len(),
                 "simulation_mode": if simulation_enabled { "simulation" } else { "production" },
                 "simulation_time_scale": simulation_time_scale,
+                "execution_backend": selected_execution_backend.as_str(),
+                "execution_backend_source": selected_execution_backend_source.as_str(),
             }),
         );
     }
@@ -399,4 +426,34 @@ fn parse_restart_mode(restart: &str) -> anyhow::Result<RestartMode> {
             "Invalid restart mode: {restart}. Expected: cold or warm. Tip: run trust-runtime play --help"
         ),
     }
+}
+
+fn resolve_execution_backend_selection(
+    bundle: Option<&RuntimeBundle>,
+    cli_override: Option<crate::cli::ExecutionBackendArg>,
+) -> anyhow::Result<(
+    trust_runtime::execution_backend::ExecutionBackend,
+    trust_runtime::execution_backend::ExecutionBackendSource,
+) > {
+    if let Some(backend) = cli_override {
+        let backend = match backend {
+            crate::cli::ExecutionBackendArg::Vm => {
+                trust_runtime::execution_backend::ExecutionBackend::BytecodeVm
+            }
+        };
+        return Ok((
+            backend,
+            trust_runtime::execution_backend::ExecutionBackendSource::Flag,
+        ));
+    }
+    if let Some(bundle) = bundle {
+        return Ok((
+            bundle.runtime.execution_backend,
+            bundle.runtime.execution_backend_source,
+        ));
+    }
+    Ok((
+        trust_runtime::execution_backend::ExecutionBackend::BytecodeVm,
+        trust_runtime::execution_backend::ExecutionBackendSource::Default,
+    ))
 }

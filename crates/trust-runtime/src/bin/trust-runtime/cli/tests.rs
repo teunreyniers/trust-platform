@@ -155,6 +155,50 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_execution_backend_flag() {
+        let cli = Cli::parse_from([
+            "trust-runtime",
+            "run",
+            "--project",
+            "project",
+            "--execution-backend",
+            "vm",
+        ]);
+        match cli.command.expect("command") {
+            Command::Run {
+                execution_backend, ..
+            } => assert_eq!(execution_backend, Some(ExecutionBackendArg::Vm)),
+            other => panic!("expected run command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_run_execution_backend_rejects_interpreter_flag() {
+        let err = Cli::try_parse_from([
+            "trust-runtime",
+            "run",
+            "--project",
+            "project",
+            "--execution-backend",
+            "interpreter",
+        ])
+        .expect_err("interpreter backend should be rejected by CLI");
+        assert!(err.to_string().contains("invalid value 'interpreter'"));
+    }
+
+    #[test]
+    fn parse_play_execution_backend_rejects_interpreter_flag() {
+        let err = Cli::try_parse_from([
+            "trust-runtime",
+            "play",
+            "--execution-backend",
+            "interpreter",
+        ])
+        .expect_err("interpreter backend should be rejected by CLI");
+        assert!(err.to_string().contains("invalid value 'interpreter'"));
+    }
+
+    #[test]
     fn parse_hmi_init_command() {
         let cli = Cli::parse_from([
             "trust-runtime",
@@ -399,6 +443,36 @@ mod tests {
                     assert_eq!(output, BenchOutputFormat::Table);
                 }
                 other => panic!("expected bench mesh-zenoh action, got {other:?}"),
+            },
+            other => panic!("expected bench command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_bench_execution_backend_command() {
+        let cli = Cli::parse_from([
+            "trust-runtime",
+            "bench",
+            "execution-backend",
+            "--samples",
+            "300",
+            "--warmup-cycles",
+            "50",
+            "--output",
+            "json",
+        ]);
+        match cli.command.expect("command") {
+            Command::Bench { action } => match action {
+                BenchAction::ExecutionBackend {
+                    samples,
+                    warmup_cycles,
+                    output,
+                } => {
+                    assert_eq!(samples, 300);
+                    assert_eq!(warmup_cycles, 50);
+                    assert_eq!(output, BenchOutputFormat::Json);
+                }
+                other => panic!("expected bench execution-backend action, got {other:?}"),
             },
             other => panic!("expected bench command, got {other:?}"),
         }

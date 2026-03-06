@@ -44,7 +44,7 @@ impl BytecodeModule {
         validate_type_table(strings, types)?;
         validate_const_pool(strings, types, const_pool)?;
         validate_ref_table(strings, ref_table)?;
-        validate_pou_index(strings, types, const_pool, pou_index, pou_bodies)?;
+        validate_pou_index(strings, types, const_pool, ref_table, pou_index, pou_bodies)?;
         validate_resource_meta(strings, ref_table, pou_index, resource_meta)?;
         validate_io_map(strings, types, ref_table, io_map)?;
         if let Some(SectionData::VarMeta(meta)) = self.section(SectionId::VarMeta) {

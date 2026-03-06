@@ -3,6 +3,8 @@ pub struct RuntimeConfig {
     pub bundle_version: u32,
     pub resource_name: SmolStr,
     pub cycle_interval: Duration,
+    pub execution_backend: ExecutionBackend,
+    pub execution_backend_source: ExecutionBackendSource,
     pub control_endpoint: SmolStr,
     pub control_auth_token: Option<SmolStr>,
     pub control_debug_enabled: bool,

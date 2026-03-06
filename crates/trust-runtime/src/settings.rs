@@ -8,12 +8,15 @@ use smol_str::SmolStr;
 use crate::config::{
     MeshRole, RuntimeCloudLinkPreferenceRule, RuntimeCloudProfile, RuntimeCloudWanAllowRule,
 };
+use crate::execution_backend::{ExecutionBackend, ExecutionBackendSource};
 use crate::value::Duration;
 use crate::watchdog::{FaultPolicy, RetainMode, WatchdogPolicy};
 
 #[derive(Debug, Clone)]
 pub struct RuntimeSettings {
     pub cycle_interval: Duration,
+    pub execution_backend: ExecutionBackend,
+    pub execution_backend_source: ExecutionBackendSource,
     pub log_level: SmolStr,
     pub watchdog: WatchdogPolicy,
     pub fault_policy: FaultPolicy,
@@ -38,6 +41,8 @@ impl RuntimeSettings {
     ) -> Self {
         Self {
             cycle_interval,
+            execution_backend: ExecutionBackend::BytecodeVm,
+            execution_backend_source: ExecutionBackendSource::Default,
             log_level: base.log_level,
             watchdog: base.watchdog,
             fault_policy: base.fault_policy,
