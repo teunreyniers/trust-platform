@@ -127,6 +127,7 @@ export function mountStRuntimePanel(
   let currentFilter = "";
   const editCache = new Map<string, string>();
   let settingsOpen = false;
+  let currentRuntimeState: "running" | "connected" | "stopped" = "stopped";
 
   const removeListeners: Array<() => void> = [];
 
@@ -303,6 +304,10 @@ export function mountStRuntimePanel(
     const running = Boolean(payload.running);
     const runtimeState =
       payload.runtimeState || (running ? "running" : "stopped");
+    
+    // Update current runtime state
+    currentRuntimeState = runtimeState;
+    
     const connected = runtimeState === "connected";
     const mode = payload.runtimeMode || "simulate";
 
@@ -845,6 +850,7 @@ export function mountStRuntimePanel(
   });
 
   addListener(runtimeStart, "click", () => {
+    // Backend will toggle between start and stop based on execution state
     vscode.postMessage({ type: "runtimeStart" });
   });
   addListener(modeSimulate, "click", () => {

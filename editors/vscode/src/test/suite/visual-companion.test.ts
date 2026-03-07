@@ -20,6 +20,10 @@ import {
   generateStateChartCompanionFunctionBlock,
   parseStateChartText,
 } from "../../visual/statechartToSt";
+import {
+  generateSfcCompanionFunctionBlock,
+  parseSfcWorkspaceText,
+} from "../../visual/sfcToSt";
 
 function extractAssignmentExpression(
   stSource: string,
@@ -112,10 +116,12 @@ suite("Visual ST companion generation", () => {
     const ladderUri = vscode.Uri.file("/tmp/demo/simple-start-stop.ladder.json");
     const blocklyUri = vscode.Uri.file("/tmp/demo/test-io.blockly.json");
     const statechartUri = vscode.Uri.file("/tmp/demo/traffic.statechart.json");
+    const sfcUri = vscode.Uri.file("/tmp/demo/snake.sfc.json");
 
     assert.strictEqual(visualSourceKindFor(ladderUri), "ladder");
     assert.strictEqual(visualSourceKindFor(blocklyUri), "blockly");
     assert.strictEqual(visualSourceKindFor(statechartUri), "statechart");
+    assert.strictEqual(visualSourceKindFor(sfcUri), "sfc");
 
     assert.ok(
       companionStUriFor(ladderUri).fsPath.endsWith(
@@ -132,6 +138,7 @@ suite("Visual ST companion generation", () => {
         path.join("tmp", "demo", "traffic.st")
       )
     );
+    assert.ok(companionStUriFor(sfcUri).fsPath.endsWith(path.join("tmp", "demo", "snake.st")));
     assert.ok(
       visualRuntimeEntryUriFor(ladderUri).fsPath.endsWith(
         path.join("tmp", "demo", "simple-start-stop.visual.runtime.st")
@@ -397,16 +404,63 @@ suite("Visual ST companion generation", () => {
     assert.match(st, /END_FUNCTION_BLOCK/);
   });
 
+  test("generates sfc companion as function block", () => {
+    const workspace = parseSfcWorkspaceText(`{
+      "name": "SFC_Demo",
+      "steps": [
+        {
+          "id": "step_init",
+          "name": "Init",
+          "initial": true,
+          "x": 250,
+          "y": 50,
+          "actions": []
+        },
+        {
+          "id": "step_run",
+          "name": "Run",
+          "x": 250,
+          "y": 200,
+          "actions": [
+            {
+              "id": "act_run",
+              "name": "SetOutput",
+              "qualifier": "N",
+              "body": "%QX0.0 := TRUE;"
+            }
+          ]
+        }
+      ],
+      "transitions": [
+        {
+          "id": "t1",
+          "name": "T1",
+          "condition": "TRUE",
+          "sourceStepId": "step_init",
+          "targetStepId": "step_run"
+        }
+      ]
+    }`);
+
+    const st = generateSfcCompanionFunctionBlock(workspace, "sfc-demo");
+    assert.match(st, /FUNCTION_BLOCK FB_sfc_demo_SFC/);
+    assert.match(st, /Init_active : BOOL := TRUE;/);
+    assert.match(st, /Run_active : BOOL := FALSE;/);
+    assert.match(st, /%QX0\.0 := TRUE;/);
+    assert.match(st, /END_FUNCTION_BLOCK/);
+  });
+
   test("all visual examples generate companions and runtime wrappers", () => {
     const repoRoot = path.resolve(__dirname, "../../../../..");
     const visualRoots: Array<{
       dir: string;
-      suffix: ".ladder.json" | ".blockly.json" | ".statechart.json";
-      kind: "ladder" | "blockly" | "statechart";
+      suffix: ".ladder.json" | ".blockly.json" | ".statechart.json" | ".sfc.json";
+      kind: "ladder" | "blockly" | "statechart" | "sfc";
     }> = [
       { dir: "ladder", suffix: ".ladder.json", kind: "ladder" },
       { dir: "blockly", suffix: ".blockly.json", kind: "blockly" },
       { dir: "statecharts", suffix: ".statechart.json", kind: "statechart" },
+      { dir: "sfc", suffix: ".sfc.json", kind: "sfc" },
     ];
 
     let sourceCount = 0;
@@ -442,7 +496,7 @@ suite("Visual ST companion generation", () => {
             "blockly"
           );
           assert.match(wrapper, /PROGRAM PRG_/);
-        } else {
+        } else if (root.kind === "statechart") {
           const parsed = parseStateChartText(sourceText);
           const st = generateStateChartCompanionFunctionBlock(parsed, baseName);
           assert.match(st, /FUNCTION_BLOCK FB_/);
@@ -450,6 +504,15 @@ suite("Visual ST companion generation", () => {
           const wrapper = generateVisualRuntimeEntrySource(
             vscode.Uri.file(sourcePath),
             "statechart"
+          );
+          assert.match(wrapper, /PROGRAM PRG_/);
+        } else {
+          const parsed = parseSfcWorkspaceText(sourceText);
+          const st = generateSfcCompanionFunctionBlock(parsed, baseName);
+          assert.match(st, /FUNCTION_BLOCK FB_/);
+          const wrapper = generateVisualRuntimeEntrySource(
+            vscode.Uri.file(sourcePath),
+            "sfc"
           );
           assert.match(wrapper, /PROGRAM PRG_/);
         }

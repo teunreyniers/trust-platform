@@ -102,9 +102,14 @@
     "onCommand:trust-lsp.statechart.import",
     "onCommand:trust-lsp.blockly.new",
     "onCommand:trust-lsp.blockly.import",
+    "onCommand:trust-lsp.ladder.new",
+    "onCommand:trust-lsp.ladder.import",
+    "onCommand:trust-lsp.sfc.new",
+    "onCommand:trust-lsp.sfc.import",
     "onCustomEditor:trust-lsp.ladder.editor",
     "onCustomEditor:trust-lsp.statechartEditor",
     "onCustomEditor:trust-lsp.blockly.editor",
+    "onCustomEditor:trust-lsp.sfc.editor",
     "onCommand:trust-lsp.visual.syncCompanionSt"
   ],
   "main": "./out/extension.js",
@@ -248,7 +253,7 @@
         "trust-lsp.visual.autoGenerateStCompanion": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically generate or update .st companion files when saving .ladder.json, .blockly.json, or .statechart.json files."
+          "description": "Automatically generate or update .st companion files when saving .ladder.json, .blockly.json, .sfc.json, or .statechart.json files."
         },
         "trust-lsp.visual.openStCompanionOnCreate": {
           "type": "boolean",
@@ -258,7 +263,7 @@
         "trust-lsp.visual.autoOpenCustomEditors": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically open .ladder.json, .statechart.json, and .blockly.json files with their visual editors."
+          "description": "Automatically open .ladder.json, .statechart.json, .sfc.json, and .blockly.json files with their visual editors."
         },
         "trust-lsp.hmi.pollIntervalMs": {
           "type": "number",
@@ -2129,6 +2134,19 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "trust-lsp.sfc.editor",
+        "displayName": "Sequential Function Chart (SFC) Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.sfc.json"
+          },
+          {
+            "filenamePattern": "*.sfc"
+          }
+        ],
+        "priority": "default"
       }
     ],
     "commands": [
@@ -2220,6 +2238,26 @@
       {
         "command": "trust-lsp.blockly.import",
         "title": "Structured Text: Import Blockly Program",
+        "category": "Structured Text"
+      },
+      {
+        "command": "trust-lsp.ladder.new",
+        "title": "Structured Text: New Ladder Logic Program",
+        "category": "Structured Text"
+      },
+      {
+        "command": "trust-lsp.ladder.import",
+        "title": "Structured Text: Import Ladder Logic Program",
+        "category": "Structured Text"
+      },
+      {
+        "command": "trust-lsp.sfc.new",
+        "title": "Structured Text: New SFC (Sequential Function Chart)",
+        "category": "Structured Text"
+      },
+      {
+        "command": "trust-lsp.sfc.import",
+        "title": "Structured Text: Import SFC (Sequential Function Chart)",
         "category": "Structured Text"
       },
       {
@@ -2374,9 +2412,10 @@
     "build:statechart": "node ./scripts/build-statechart-webview.js",
     "build:blockly": "node ./scripts/build-blockly-webview.js",
     "build:ladder": "node ./scripts/build-ladder-webview.js",
+    "build:sfc": "node ./scripts/build-sfc-webview.js",
     "typecheck:webview": "tsc -p ./tsconfig.webview.json",
-    "compile": "npm run build:panel && npm run build:statechart && npm run build:blockly && npm run build:ladder && tsc -p ./ && npm run typecheck:webview",
-    "watch": "concurrently \"node ./scripts/watch-io-panel.js\" \"node ./scripts/build-statechart-webview.js --watch\" \"node ./scripts/build-blockly-webview.js --watch\" \"node ./scripts/build-ladder-webview.js --watch\"",
+    "compile": "npm run build:panel && npm run build:statechart && npm run build:blockly && npm run build:ladder && npm run build:sfc && tsc -p ./ && npm run typecheck:webview",
+    "watch": "concurrently \"node ./scripts/watch-io-panel.js\" \"node ./scripts/build-statechart-webview.js --watch\" \"node ./scripts/build-blockly-webview.js --watch\" \"node ./scripts/build-ladder-webview.js --watch\" \"node ./scripts/build-sfc-webview.js --watch\"",
     "lint": "eslint src --ext ts,tsx",
     "test": "npm run compile && node ./out/test/runTest.js"
   },

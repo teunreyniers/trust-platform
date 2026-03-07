@@ -144,3 +144,14 @@ export async function importBlocklyCommand(
     return undefined;
   }
 }
+
+export function registerImportBlocklyCommand(
+  context: vscode.ExtensionContext
+): void {
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      IMPORT_BLOCKLY_COMMAND,
+      importBlocklyCommand
+    )
+  );
+}

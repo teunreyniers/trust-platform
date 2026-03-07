@@ -27,6 +27,7 @@ export function run(): Promise<void> {
   require("./visual-webview-vscode-api.test");
   require("./statechart-editor.lifecycle.test");
   require("./statechart-engine.test");
+  require("./sfc-engine.test");
   require("./statechart-runtime-client.test");
   require("./runtime-shared-utils.test");
   require("./snippets.test");

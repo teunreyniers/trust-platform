@@ -15,8 +15,12 @@ import { defaultRuntimeControlEndpoint } from "./runtimeDefaults";
 import { registerNewProjectCommand } from "./newProject";
 import { registerNewStatechartCommand } from "./statechart/newStatechart";
 import { registerImportStatechartCommand } from "./statechart/importStatechart";
-import { newBlocklyCommand } from "./blockly/newBlockly";
-import { importBlocklyCommand } from "./blockly/importBlockly";
+import { registerNewBlocklyCommand } from "./blockly/newBlockly";
+import { registerImportBlocklyCommand } from "./blockly/importBlockly";
+import { registerNewLadderCommand } from "./ladder/newLadder";
+import { registerImportLadderCommand } from "./ladder/importLadder";
+import { newSfcCommand } from "./sfc/newSfc";
+import { registerImportSfcCommand } from "./sfc/importSfc";
 import { registerPlcopenImportCommand } from "./plcopenImport";
 import { registerPlcopenExportCommand } from "./plcopenExport";
 import { registerStTestIntegration } from "./stTests";
@@ -28,6 +32,7 @@ import {
 import { StateChartEditorProvider } from "./statechart/stateChartEditor";
 import { BlocklyEditorProvider } from "./blockly/blocklyEditor";
 import { LadderEditorProvider } from "./ladder/ladderEditor";
+import { SfcEditorProvider } from "./sfc/sfcEditor";
 import { registerVisualCompanionSync } from "./visual/companionSt";
 import { registerVisualCustomEditorAutoOpen } from "./visual/autoOpenCustomEditors";
 
@@ -185,6 +190,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(StateChartEditorProvider.register(context));
   context.subscriptions.push(BlocklyEditorProvider.register(context));
   context.subscriptions.push(LadderEditorProvider.register(context));
+  context.subscriptions.push(SfcEditorProvider.register(context));
 
   registerDebugAdapter(context);
   registerIoPanel(context);
@@ -240,12 +246,14 @@ export async function activate(context: vscode.ExtensionContext) {
   registerNewProjectCommand(context);
   registerNewStatechartCommand(context);
   registerImportStatechartCommand(context);
+  registerNewBlocklyCommand(context);
+  registerImportBlocklyCommand(context);
+  registerNewLadderCommand(context);
+  registerImportLadderCommand(context);
   context.subscriptions.push(
-    vscode.commands.registerCommand("trust-lsp.blockly.new", newBlocklyCommand)
+    vscode.commands.registerCommand("trust-lsp.sfc.new", newSfcCommand)
   );
-  context.subscriptions.push(
-    vscode.commands.registerCommand("trust-lsp.blockly.import", importBlocklyCommand)
-  );
+  registerImportSfcCommand(context);
   registerPlcopenImportCommand(context);
   registerPlcopenExportCommand(context);
   registerNamespaceMoveCommand(context, client);

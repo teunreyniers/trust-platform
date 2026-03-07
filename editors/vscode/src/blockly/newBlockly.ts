@@ -160,3 +160,14 @@ export async function newBlocklyCommand(
     return undefined;
   }
 }
+
+export function registerNewBlocklyCommand(
+  context: vscode.ExtensionContext
+): void {
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      NEW_BLOCKLY_COMMAND,
+      newBlocklyCommand
+    )
+  );
+}

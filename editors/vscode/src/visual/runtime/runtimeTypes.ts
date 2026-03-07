@@ -3,7 +3,7 @@ export type RuntimeUiMode = "local" | "external";
 export type RuntimeUiStatus = "idle" | "running" | "stopped" | "error";
 
 export type RightPaneView = "io" | "settings" | "tools";
-export type RightPaneEditorKind = "ladder" | "statechart" | "blockly";
+export type RightPaneEditorKind = "ladder" | "statechart" | "blockly" | "sfc";
 
 export interface RuntimeUiState {
   mode: RuntimeUiMode;

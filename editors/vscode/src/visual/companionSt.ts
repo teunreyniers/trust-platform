@@ -13,18 +13,23 @@ import {
   parseStateChartText,
 } from "./statechartToSt";
 import {
+  generateSfcCompanionFunctionBlock,
+  parseSfcWorkspaceText,
+} from "./sfcToSt";
+import {
   fbNameForSource,
   isAssignableIdentifier,
   isDirectAddress,
   sanitizeIdentifier,
 } from "./stNaming";
 
-export type VisualSourceKind = "ladder" | "blockly" | "statechart";
+export type VisualSourceKind = "ladder" | "blockly" | "statechart" | "sfc";
 
 const VISUAL_SUFFIXES: ReadonlyArray<{ kind: VisualSourceKind; suffix: string }> = [
   { kind: "ladder", suffix: ".ladder.json" },
   { kind: "blockly", suffix: ".blockly.json" },
   { kind: "statechart", suffix: ".statechart.json" },
+  { kind: "sfc", suffix: ".sfc.json" },
 ];
 const VISUAL_RUNTIME_WRAPPER_SUFFIX = ".visual.runtime.st";
 
@@ -88,6 +93,9 @@ function suffixForKind(sourceKind: VisualSourceKind): string {
   }
   if (sourceKind === "blockly") {
     return "BLOCKLY";
+  }
+  if (sourceKind === "sfc") {
+    return "SFC";
   }
   return "STATECHART";
 }
@@ -186,6 +194,11 @@ function generateVisualCompanionBody(
   if (sourceKind === "blockly") {
     const workspace = parseBlocklyWorkspaceText(sourceText);
     return generateBlocklyCompanionFunctionBlock(workspace, baseName);
+  }
+
+  if (sourceKind === "sfc") {
+    const workspace = parseSfcWorkspaceText(sourceText);
+    return generateSfcCompanionFunctionBlock(workspace, baseName);
   }
 
   const statechart = parseStateChartText(sourceText);
@@ -463,7 +476,7 @@ export function registerVisualCompanionSync(): vscode.Disposable {
         parsedUri ?? vscode.window.activeTextEditor?.document.uri;
       if (!targetUri) {
         const visualSources = await vscode.workspace.findFiles(
-          "**/*.{ladder,blockly,statechart}.json"
+          "**/*.{ladder,blockly,statechart,sfc}.json"
         );
         let syncedCount = 0;
         for (const visualSource of visualSources) {
@@ -482,7 +495,7 @@ export function registerVisualCompanionSync(): vscode.Disposable {
       }
       if (!isVisualSourceUri(targetUri)) {
         void vscode.window.showWarningMessage(
-          "Selected file is not a supported visual source (*.ladder.json, *.blockly.json, *.statechart.json)."
+          "Selected file is not a supported visual source (*.ladder.json, *.blockly.json, *.statechart.json, *.sfc.json)."
         );
         return;
       }
