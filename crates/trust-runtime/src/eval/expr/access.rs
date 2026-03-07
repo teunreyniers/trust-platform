@@ -3,8 +3,8 @@ use smol_str::SmolStr;
 use crate::error::RuntimeError;
 use crate::eval::EvalContext;
 use crate::value::{
-    parse_partial_access, read_partial_access, write_partial_access, ArrayValue,
-    PartialAccessError, StructValue, Value, ValueRef,
+    parse_partial_access, read_partial_access, write_partial_access, PartialAccessError, Value,
+    ValueRef,
 };
 
 use super::ast::Expr;
@@ -111,12 +111,10 @@ pub(super) fn resolve_reference(ctx: &EvalContext<'_>, name: &SmolStr) -> Option
 
 pub(super) fn read_indices(target: Value, indices: &[Value]) -> Result<Value, RuntimeError> {
     match target {
-        Value::Array(ArrayValue {
-            elements,
-            dimensions,
-        }) => {
-            let offset = array_offset(&dimensions, indices)?;
-            elements
+        Value::Array(array) => {
+            let offset = array_offset(&array.dimensions, indices)?;
+            array
+                .elements
                 .get(offset)
                 .cloned()
                 .ok_or(RuntimeError::TypeMismatch)
@@ -153,7 +151,8 @@ pub(super) fn read_field(
         return read_partial_access(&target, access).map_err(partial_access_error_to_runtime);
     }
     match target {
-        Value::Struct(StructValue { fields, .. }) => fields
+        Value::Struct(struct_value) => struct_value
+            .fields
             .get(field)
             .cloned()
             .ok_or_else(|| RuntimeError::UndefinedField(field.clone())),

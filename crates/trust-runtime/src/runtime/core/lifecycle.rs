@@ -3,6 +3,8 @@ impl Runtime {
     #[must_use]
     pub fn new() -> Self {
         let mut runtime = Self {
+            execution_backend: crate::execution_backend::ExecutionBackend::BytecodeVm,
+            vm_module: None,
             profile: DateTimeProfile::default(),
             storage: VariableStorage::default(),
             registry: TypeRegistry::new(),
@@ -11,6 +13,8 @@ impl Runtime {
             stdlib: StandardLibrary::new(),
             debug: None,
             statement_index: IndexMap::new(),
+            source_text_index: IndexMap::new(),
+            source_label_index: std::collections::HashMap::new(),
             functions: IndexMap::new(),
             function_blocks: IndexMap::new(),
             classes: IndexMap::new(),
@@ -29,6 +33,10 @@ impl Runtime {
             watchdog: WatchdogSubsystem::new(),
             faults: FaultSubsystem::new(),
             execution_deadline: None,
+            vm_register_lowering_cache: super::vm::RegisterLoweringCacheState::from_env(),
+            vm_register_profile: super::vm::RegisterProfileState::default(),
+            vm_tier1_specialized_executor:
+                super::vm::RegisterTier1SpecializedExecutorState::from_env(),
         };
         runtime.register_builtin_function_blocks();
         runtime
@@ -138,6 +146,7 @@ impl Runtime {
     /// Attach a metrics sink for runtime statistics.
     pub fn set_metrics_sink(&mut self, metrics: std::sync::Arc<std::sync::Mutex<RuntimeMetrics>>) {
         self.metrics.set_sink(metrics);
+        self.metrics.set_execution_backend(self.execution_backend);
     }
 
     /// Update retain save interval without changing the backend.

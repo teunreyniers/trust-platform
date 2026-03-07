@@ -107,7 +107,7 @@ impl DebugAdapter {
                     }
                 };
             (expr, value)
-        } else if let Ok(mut runtime) = self.session.runtime_handle().lock() {
+        } else if let Ok(mut runtime) = self.session.runtime_handle().try_lock() {
             if frame_id == Some(FrameId(0)) && runtime.storage().frames().is_empty() {
                 frame_id = None;
             }

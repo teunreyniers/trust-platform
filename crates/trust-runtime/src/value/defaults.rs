@@ -75,10 +75,10 @@ fn default_value_for_type(
             for _ in 0..total {
                 elements.push(default_value_for_type_id(*element, registry, profile)?);
             }
-            Ok(Value::Array(ArrayValue {
+            Ok(Value::Array(Box::new(ArrayValue {
                 elements,
                 dimensions: dimensions.clone(),
-            }))
+            })))
         }
         Type::Struct { name, fields } => {
             let mut values = IndexMap::new();
@@ -86,19 +86,19 @@ fn default_value_for_type(
                 let field_value = default_value_for_type_id(field.type_id, registry, profile)?;
                 values.insert(field.name.clone(), field_value);
             }
-            Ok(Value::Struct(StructValue {
+            Ok(Value::Struct(Box::new(StructValue {
                 type_name: name.clone(),
                 fields: values,
-            }))
+            })))
         }
         Type::Enum { name, values, .. } => {
             let (variant_name, numeric_value) =
                 values.first().ok_or(DefaultValueError::EmptyEnum)?;
-            Ok(Value::Enum(EnumValue {
+            Ok(Value::Enum(Box::new(EnumValue {
                 type_name: name.clone(),
                 variant_name: variant_name.clone(),
                 numeric_value: *numeric_value,
-            }))
+            })))
         }
         Type::Alias { target, .. } => default_value_for_type_id(*target, registry, profile),
         Type::Reference { .. } => Ok(Value::Reference(None)),
@@ -110,10 +110,10 @@ fn default_value_for_type(
                 let variant_value = default_value_for_type_id(variant.type_id, registry, profile)?;
                 values.insert(variant.name.clone(), variant_value);
             }
-            Ok(Value::Struct(StructValue {
+            Ok(Value::Struct(Box::new(StructValue {
                 type_name: name.clone(),
                 fields: values,
-            }))
+            })))
         }
         Type::Unknown
         | Type::Void

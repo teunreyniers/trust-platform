@@ -43,16 +43,16 @@ fn selection_full() {
         Value::Int(20)
     );
 
-    let red = Value::Enum(EnumValue {
+    let red = Value::Enum(Box::new(EnumValue {
         type_name: "Color".into(),
         variant_name: "RED".into(),
         numeric_value: 0,
-    });
-    let green = Value::Enum(EnumValue {
+    }));
+    let green = Value::Enum(Box::new(EnumValue {
         type_name: "Color".into(),
         variant_name: "GREEN".into(),
         numeric_value: 1,
-    });
+    }));
 
     assert_eq!(
         lib.call("SEL", &[Value::Bool(true), red.clone(), green.clone()])

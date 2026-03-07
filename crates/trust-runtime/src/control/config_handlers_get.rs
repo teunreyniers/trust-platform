@@ -63,6 +63,8 @@ pub(super) fn handle_config_get(id: u64, state: &ControlState) -> ControlRespons
             "watchdog.timeout_ms": settings.watchdog.timeout.as_millis(),
             "watchdog.action": format!("{:?}", settings.watchdog.action),
             "resource.cycle_interval_ms": settings.cycle_interval.as_millis(),
+            "runtime.execution_backend": settings.execution_backend.as_str(),
+            "runtime.execution_backend_source": settings.execution_backend_source.as_str(),
             "fault.policy": format!("{:?}", settings.fault_policy),
             "retain.mode": format!("{:?}", settings.retain_mode),
             "retain.save_interval_ms": settings.retain_save_interval.map(|val| val.as_millis()),

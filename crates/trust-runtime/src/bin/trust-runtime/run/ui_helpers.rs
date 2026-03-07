@@ -4,6 +4,8 @@ fn print_trust_banner(
     simulation_enabled: bool,
     simulation_time_scale: u32,
     scaffold: Option<&trust_runtime::hmi::HmiScaffoldSummary>,
+    execution_backend: trust_runtime::execution_backend::ExecutionBackend,
+    execution_backend_source: trust_runtime::execution_backend::ExecutionBackendSource,
 ) {
     crate::style::print_logo();
     println!("Your PLC is running.");
@@ -13,6 +15,11 @@ fn print_trust_banner(
     if let Some(bundle) = bundle {
         println!("PLC name: {}", bundle.runtime.resource_name);
         println!("Project: {}", bundle.root.display());
+        println!(
+            "Execution backend: {} ({})",
+            execution_backend.as_str(),
+            execution_backend_source.as_str()
+        );
         println!(
             "I/O drivers: {}",
             bundle
@@ -52,6 +59,11 @@ fn print_trust_banner(
             println!("HMI ready: {web_url}/hmi");
         }
     } else {
+        println!(
+            "Execution backend: {} ({})",
+            execution_backend.as_str(),
+            execution_backend_source.as_str()
+        );
         println!("Web UI: disabled");
     }
     println!("Press Ctrl+C to stop.");
@@ -132,7 +144,12 @@ fn print_startup_summary(
     opcua_endpoint: Option<&str>,
     simulation_enabled: bool,
     simulation_time_scale: u32,
+    execution_backend_selection: (
+        trust_runtime::execution_backend::ExecutionBackend,
+        trust_runtime::execution_backend::ExecutionBackendSource,
+    ),
 ) {
+    let (execution_backend, execution_backend_source) = execution_backend_selection;
     println!("project folder: {}", bundle.root.display());
     println!("PLC name: {}", bundle.runtime.resource_name);
     println!("restart: {restart:?}");
@@ -148,6 +165,11 @@ fn print_startup_summary(
     println!(
         "cycle interval: {} ms",
         bundle.runtime.cycle_interval.as_millis()
+    );
+    println!(
+        "execution backend: {} ({})",
+        execution_backend.as_str(),
+        execution_backend_source.as_str()
     );
     println!(
         "io drivers: {}",

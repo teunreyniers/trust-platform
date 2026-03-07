@@ -1,3 +1,5 @@
+#[cfg(feature = "legacy-interpreter")]
+use trust_runtime::execution_backend::ExecutionBackend;
 use trust_runtime::harness::TestHarness;
 
 #[test]
@@ -21,6 +23,11 @@ fn assign_attempt() {
     "#;
 
     let mut harness = TestHarness::from_source(source).unwrap();
+    #[cfg(feature = "legacy-interpreter")]
+    harness
+        .runtime_mut()
+        .set_execution_backend(ExecutionBackend::Interpreter)
+        .expect("switch to interpreter backend");
     harness.cycle();
     harness.assert_eq("out", 6i16);
 }

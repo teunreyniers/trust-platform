@@ -1,5 +1,4 @@
 use crate::error::RuntimeError;
-use crate::eval::EvalContext;
 use crate::memory::InstanceId;
 use crate::value::Value;
 
@@ -7,6 +6,7 @@ use super::instance::{
     get_or_init_bool, read_bool, read_value, read_value_or_null, set_instance_value, write_bool,
 };
 use super::state::{STATE_PREV_CD, STATE_PREV_CU};
+use super::BuiltinExecContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CounterOutput {
@@ -261,7 +261,7 @@ macro_rules! counter_up_down_unsigned {
 }
 
 pub(super) fn exec_ctu(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
 ) -> Result<(), RuntimeError> {
     let cu = read_bool(ctx, instance_id, "CU")?;
@@ -320,7 +320,7 @@ pub(super) fn exec_ctu(
 }
 
 pub(super) fn exec_ctd(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
 ) -> Result<(), RuntimeError> {
     let cd = read_bool(ctx, instance_id, "CD")?;
@@ -379,7 +379,7 @@ pub(super) fn exec_ctd(
 }
 
 pub(super) fn exec_ctud(
-    ctx: &mut EvalContext<'_>,
+    ctx: &mut BuiltinExecContext<'_>,
     instance_id: InstanceId,
 ) -> Result<(), RuntimeError> {
     let cu = read_bool(ctx, instance_id, "CU")?;

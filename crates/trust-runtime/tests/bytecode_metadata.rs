@@ -70,7 +70,7 @@ END_CONFIGURATION
 "#;
 
     let mut runtime = TestHarness::from_source(source).unwrap().into_runtime();
-    let module = bytecode_helpers::base_module();
+    let module = BytecodeModule::from_runtime(&runtime).unwrap();
     let bytes = module.encode().unwrap();
 
     runtime.apply_bytecode_bytes(&bytes, None).unwrap();
@@ -166,7 +166,7 @@ END_CONFIGURATION
         single: Some("trigger".into()),
         priority: 0,
         programs: Vec::new(),
-        fb_instances: vec![fb_ref],
+        fb_instances: vec![fb_ref.clone()],
     };
     let metadata = BytecodeMetadata {
         version: BytecodeVersion::new(SUPPORTED_MAJOR_VERSION, 0),

@@ -37,6 +37,9 @@ pub enum Command {
         /// Simulation time acceleration factor (>= 1).
         #[arg(long, default_value_t = 1)]
         time_scale: u32,
+        /// Override execution backend (`vm`).
+        #[arg(long = "execution-backend", value_enum)]
+        execution_backend: Option<ExecutionBackendArg>,
     },
     /// Start the runtime with project auto-detection (production UX).
     #[command(
@@ -64,6 +67,9 @@ pub enum Command {
         /// Simulation time acceleration factor (>= 1).
         #[arg(long, default_value_t = 1)]
         time_scale: u32,
+        /// Override execution backend (`vm`).
+        #[arg(long = "execution-backend", value_enum)]
+        execution_backend: Option<ExecutionBackendArg>,
     },
     /// Interactive TUI for monitoring and control.
     Ui {
@@ -317,4 +323,9 @@ pub enum ConfigUiAction {
         #[arg(long, default_value = "127.0.0.1:18080")]
         listen: String,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ExecutionBackendArg {
+    Vm,
 }

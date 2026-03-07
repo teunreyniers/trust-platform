@@ -1,5 +1,5 @@
 use trust_runtime::harness::TestHarness;
-use trust_runtime::value::{EnumValue, Value};
+use trust_runtime::value::Value;
 
 #[test]
 fn iec_table11() {
@@ -34,8 +34,8 @@ END_PROGRAM
 
     let c = harness.get_output("c").unwrap();
     match c {
-        Value::Enum(EnumValue { variant_name, .. }) => {
-            assert_eq!(variant_name.as_str(), "Red");
+        Value::Enum(enum_value) => {
+            assert_eq!(enum_value.variant_name.as_str(), "Red");
         }
         _ => panic!("expected enum value"),
     }

@@ -5,6 +5,7 @@ use std::time::{Duration as StdDuration, Instant};
 
 use smol_str::SmolStr;
 
+use crate::execution_backend::ExecutionBackend;
 use crate::metrics::RuntimeMetrics;
 
 pub(super) struct MetricsSubsystem {
@@ -18,6 +19,14 @@ impl MetricsSubsystem {
 
     pub(super) fn set_sink(&mut self, metrics: Arc<Mutex<RuntimeMetrics>>) {
         self.sink = Some(metrics);
+    }
+
+    pub(super) fn set_execution_backend(&self, backend: ExecutionBackend) {
+        if let Some(metrics) = self.sink.as_ref() {
+            if let Ok(mut guard) = metrics.lock() {
+                guard.set_execution_backend(backend);
+            }
+        }
     }
 
     pub(super) fn start_timer(&self) -> Option<Instant> {

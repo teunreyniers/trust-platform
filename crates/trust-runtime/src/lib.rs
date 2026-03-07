@@ -26,6 +26,8 @@ pub mod discovery;
 pub mod error;
 /// Expression and statement evaluation.
 pub mod eval;
+/// Runtime execution backend selection and provenance.
+pub mod execution_backend;
 /// Test harness for runtime execution.
 pub mod harness;
 /// Historian, alerts, and Prometheus observability helpers.

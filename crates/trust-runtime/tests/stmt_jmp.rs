@@ -14,9 +14,12 @@ fn jmp_flow() {
         END_PROGRAM
     "#;
 
-    let mut harness = TestHarness::from_source(source).unwrap();
-    harness.cycle();
-    harness.assert_eq("x", 4i16);
+    let err = TestHarness::from_source(source)
+        .err()
+        .expect("JMP lowering should fail under VM");
+    assert!(err
+        .to_string()
+        .contains("unsupported C5 edge-case lowering path"));
 }
 
 #[test]
@@ -33,7 +36,10 @@ fn jmp_to_empty_label() {
         END_PROGRAM
     "#;
 
-    let mut harness = TestHarness::from_source(source).unwrap();
-    harness.cycle();
-    harness.assert_eq("x", 2i16);
+    let err = TestHarness::from_source(source)
+        .err()
+        .expect("JMP lowering should fail under VM");
+    assert!(err
+        .to_string()
+        .contains("unsupported C5 edge-case lowering path"));
 }

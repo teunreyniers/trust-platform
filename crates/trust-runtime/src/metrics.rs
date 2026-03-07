@@ -7,6 +7,8 @@ use std::time::Instant;
 
 use smol_str::SmolStr;
 
+use crate::execution_backend::ExecutionBackend;
+
 #[derive(Debug, Clone, Copy)]
 pub struct CycleStats {
     pub min_ms: f64,
@@ -155,6 +157,7 @@ struct CallProfileEntry {
 #[derive(Debug, Clone)]
 pub struct RuntimeMetrics {
     start: Instant,
+    execution_backend: ExecutionBackend,
     pub cycle: CycleStats,
     pub tasks: HashMap<SmolStr, TaskStats>,
     pub profiling_enabled: bool,
@@ -168,6 +171,7 @@ impl RuntimeMetrics {
     pub fn new() -> Self {
         Self {
             start: Instant::now(),
+            execution_backend: ExecutionBackend::BytecodeVm,
             cycle: CycleStats::default(),
             tasks: HashMap::new(),
             profiling_enabled: true,
@@ -199,6 +203,10 @@ impl RuntimeMetrics {
 
     pub fn record_fault(&mut self) {
         self.faults = self.faults.saturating_add(1);
+    }
+
+    pub fn set_execution_backend(&mut self, backend: ExecutionBackend) {
+        self.execution_backend = backend;
     }
 
     pub fn set_profiling_enabled(&mut self, enabled: bool) {
@@ -288,6 +296,7 @@ impl RuntimeMetrics {
             .collect();
         RuntimeMetricsSnapshot {
             uptime_ms: self.uptime_ms(),
+            execution_backend: self.execution_backend,
             cycle: self.cycle,
             faults: self.faults,
             overruns: self.overruns,
@@ -320,6 +329,7 @@ pub struct TaskStatsSnapshot {
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeMetricsSnapshot {
     pub uptime_ms: u64,
+    pub execution_backend: ExecutionBackend,
     pub cycle: CycleStats,
     pub faults: u64,
     pub overruns: u64,

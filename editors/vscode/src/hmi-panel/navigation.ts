@@ -5,8 +5,9 @@ import { HmiWidgetSchema } from "./types";
 
 const SEARCH_GLOBS = ["**/*.st", "**/*.ST", "**/*.pou", "**/*.POU"] as const;
 const SEARCH_EXCLUDE = "**/{.git,node_modules,target,.vscode-test}/**";
-const MAX_SEARCH_RESULTS = 2000;
 const EXCLUDED_DIRS = new Set([".git", "node_modules", "target", ".vscode-test"]);
+const SOURCE_EXTENSIONS = new Set([".st", ".pou"]);
+const SOURCE_SCAN_LIMIT = 4000;
 
 type HmiWidgetLocation = {
   file: string;
@@ -95,7 +96,7 @@ async function findProgramVariable(
   programName: string,
   variableName: string
 ): Promise<vscode.Location | undefined> {
-  const files = await findStructuredTextFiles();
+  const files = await findSourceFiles();
   for (const uri of files) {
     const doc = await vscode.workspace.openTextDocument(uri);
     const position = findProgramVarPosition(doc.getText(), programName, variableName);
@@ -107,7 +108,7 @@ async function findProgramVariable(
 }
 
 async function findGlobalVariable(name: string): Promise<vscode.Location | undefined> {
-  const files = await findStructuredTextFiles();
+  const files = await findSourceFiles();
   for (const uri of files) {
     const doc = await vscode.workspace.openTextDocument(uri);
     const position = findGlobalVarPosition(doc.getText(), name);
@@ -118,72 +119,71 @@ async function findGlobalVariable(name: string): Promise<vscode.Location | undef
   return undefined;
 }
 
-async function findStructuredTextFiles(): Promise<vscode.Uri[]> {
-  const files = new Map<string, vscode.Uri>();
-
+async function findSourceFiles(): Promise<vscode.Uri[]> {
+  const seen = new Set<string>();
+  const files: vscode.Uri[] = [];
   for (const glob of SEARCH_GLOBS) {
-    const matches = await vscode.workspace.findFiles(glob, SEARCH_EXCLUDE, MAX_SEARCH_RESULTS);
+    const matches = await vscode.workspace.findFiles(glob, SEARCH_EXCLUDE, 2000);
     for (const uri of matches) {
-      files.set(uri.toString(), uri);
+      const key = uri.toString();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      files.push(uri);
     }
   }
 
-  if (files.size > 0) {
-    return Array.from(files.values());
+  if (files.length > 0) {
+    return files;
   }
 
-  const scanned = await scanWorkspaceStructuredTextFiles(MAX_SEARCH_RESULTS);
-  for (const uri of scanned) {
-    files.set(uri.toString(), uri);
-  }
-
-  return Array.from(files.values());
-}
-
-async function scanWorkspaceStructuredTextFiles(maxResults: number): Promise<vscode.Uri[]> {
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  const queue = folders.map((folder) => folder.uri);
-  const results: vscode.Uri[] = [];
-
-  while (queue.length > 0 && results.length < maxResults) {
-    const current = queue.shift();
-    if (!current) {
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    await collectSourceFiles(folder.uri, files, seen);
+    if (files.length >= SOURCE_SCAN_LIMIT) {
       break;
     }
-
-    let entries: [string, vscode.FileType][];
-    try {
-      entries = await vscode.workspace.fs.readDirectory(current);
-    } catch {
-      continue;
-    }
-
-    for (const [name, type] of entries) {
-      if (type === vscode.FileType.Directory) {
-        if (EXCLUDED_DIRS.has(name)) {
-          continue;
-        }
-        queue.push(vscode.Uri.joinPath(current, name));
-        continue;
-      }
-
-      if (type !== vscode.FileType.File || !isStructuredTextFile(name)) {
-        continue;
-      }
-
-      results.push(vscode.Uri.joinPath(current, name));
-      if (results.length >= maxResults) {
-        break;
-      }
-    }
   }
-
-  return results;
+  return files;
 }
 
-function isStructuredTextFile(name: string): boolean {
-  const lower = name.toLowerCase();
-  return lower.endsWith(".st") || lower.endsWith(".pou");
+async function collectSourceFiles(
+  dir: vscode.Uri,
+  files: vscode.Uri[],
+  seen: Set<string>
+): Promise<void> {
+  let entries: [string, vscode.FileType][];
+  try {
+    entries = await vscode.workspace.fs.readDirectory(dir);
+  } catch {
+    return;
+  }
+
+  for (const [name, type] of entries) {
+    if (files.length >= SOURCE_SCAN_LIMIT) {
+      return;
+    }
+    const child = vscode.Uri.joinPath(dir, name);
+    if (type === vscode.FileType.Directory) {
+      if (EXCLUDED_DIRS.has(name)) {
+        continue;
+      }
+      await collectSourceFiles(child, files, seen);
+      continue;
+    }
+    if (type !== vscode.FileType.File) {
+      continue;
+    }
+    if (!SOURCE_EXTENSIONS.has(path.extname(name).toLowerCase())) {
+      continue;
+    }
+    const key = child.toString();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    files.push(child);
+  }
 }
 
 function findProgramVarPosition(

@@ -5,16 +5,16 @@ use trust_runtime::value::{EnumValue, Value};
 fn enum_and_validate() {
     let lib = StandardLibrary::new();
 
-    let red = Value::Enum(EnumValue {
+    let red = Value::Enum(Box::new(EnumValue {
         type_name: "Color".into(),
         variant_name: "RED".into(),
         numeric_value: 0,
-    });
-    let green = Value::Enum(EnumValue {
+    }));
+    let green = Value::Enum(Box::new(EnumValue {
         type_name: "Color".into(),
         variant_name: "GREEN".into(),
         numeric_value: 1,
-    });
+    }));
 
     assert_eq!(
         lib.call("EQ", &[red.clone(), red.clone()]).unwrap(),

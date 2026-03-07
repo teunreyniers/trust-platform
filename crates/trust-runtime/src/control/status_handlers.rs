@@ -9,11 +9,8 @@ use super::{ControlResponse, ControlState};
 pub(super) fn handle_status(id: u64, state: &ControlState) -> ControlResponse {
     let status = state.resource.state();
     let error = state.resource.last_error().map(|err| err.to_string());
-    let simulation = state
-        .settings
-        .lock()
-        .ok()
-        .map(|guard| guard.simulation.clone());
+    let settings = state.settings.lock().ok().map(|guard| guard.clone());
+    let simulation = settings.as_ref().map(|cfg| cfg.simulation.clone());
     let io_health = state
         .io_health
         .lock()
@@ -26,6 +23,15 @@ pub(super) fn handle_status(id: u64, state: &ControlState) -> ControlResponse {
         .ok()
         .map(|guard| guard.snapshot())
         .unwrap_or_default();
+    // Runtime settings are the single source of truth for selected backend mode/source.
+    let execution_backend = settings
+        .as_ref()
+        .map(|cfg| cfg.execution_backend.as_str())
+        .unwrap_or("vm");
+    let execution_backend_source = settings
+        .as_ref()
+        .map(|cfg| cfg.execution_backend_source.as_str())
+        .unwrap_or("default");
     ControlResponse::ok(
         id,
         json!({
@@ -40,6 +46,8 @@ pub(super) fn handle_status(id: u64, state: &ControlState) -> ControlResponse {
                 .lock()
                 .map(|mode| format!("{:?}", *mode).to_ascii_lowercase())
                 .unwrap_or_else(|_| "production".to_string()),
+            "execution_backend": execution_backend,
+            "execution_backend_source": execution_backend_source,
             "simulation_mode": simulation
                 .as_ref()
                 .map(|cfg| cfg.mode_label.as_str())
@@ -79,6 +87,7 @@ pub(super) fn handle_status(id: u64, state: &ControlState) -> ControlResponse {
                         })
                         .collect::<Vec<_>>(),
                 },
+                "execution_backend": execution_backend,
             },
             "io_drivers": io_health,
         }),

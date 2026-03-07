@@ -66,6 +66,7 @@ struct TaskSection {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RuntimeSection {
+    execution_backend: Option<String>,
     control: ControlSection,
     log: LogSection,
     retain: RetainSection,

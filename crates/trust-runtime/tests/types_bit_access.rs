@@ -1,3 +1,5 @@
+#[cfg(feature = "legacy-interpreter")]
+use trust_runtime::execution_backend::ExecutionBackend;
 use trust_runtime::harness::TestHarness;
 use trust_runtime::value::Value;
 
@@ -26,6 +28,11 @@ END_PROGRAM
 "#;
 
     let mut harness = TestHarness::from_source(source).unwrap();
+    #[cfg(feature = "legacy-interpreter")]
+    harness
+        .runtime_mut()
+        .set_execution_backend(ExecutionBackend::Interpreter)
+        .expect("switch to interpreter backend");
     harness.cycle();
 
     assert_eq!(harness.get_output("bit_val"), Some(Value::Bool(false)));

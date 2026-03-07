@@ -3,6 +3,7 @@
 #![allow(missing_docs)]
 
 use smol_str::SmolStr;
+use std::sync::Arc;
 
 use crate::error;
 use crate::task::TaskConfig;
@@ -32,6 +33,9 @@ impl Runtime {
         }
         .ok_or_else(|| error::RuntimeError::InvalidBytecodeMetadata("resource".into()))?;
         self.apply_resource_metadata(resource)?;
+        self.vm_module = None;
+        self.vm_register_lowering_cache.invalidate_all();
+        self.vm_tier1_specialized_executor.invalidate_all();
         Ok(())
     }
 
@@ -47,7 +51,12 @@ impl Runtime {
         let metadata = module
             .metadata()
             .map_err(|err| error::RuntimeError::InvalidBytecode(err.to_string().into()))?;
-        self.apply_bytecode_metadata(&metadata, resource_name)
+        // Materialize VM module before mutating runtime metadata so failures do not
+        // leave runtime state updated without a corresponding executable module.
+        let vm_module = Arc::new(super::vm::VmModule::from_bytecode(module)?);
+        self.apply_bytecode_metadata(&metadata, resource_name)?;
+        self.vm_module = Some(vm_module);
+        Ok(())
     }
 
     /// Decode a bytecode container and apply its metadata.

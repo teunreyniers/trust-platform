@@ -87,6 +87,11 @@ impl<'a> BytecodeEncoder<'a> {
                 return Ok(Some(reference));
             }
         }
+        if let Some(binding) = self.runtime.access_map().get(name.as_ref()) {
+            if binding.partial.is_none() {
+                return Ok(Some(binding.reference.clone()));
+            }
+        }
         Ok(self.runtime.storage().ref_for_global(name.as_ref()))
     }
 

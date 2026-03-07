@@ -44,11 +44,7 @@ fn load_runtime(
         text: "PROGRAM Main\nEND_PROGRAM\n".to_string(),
     };
     let sources = SourceRegistry::new(vec![bootstrap_source]);
-    let session = CompileSession::from_sources(vec![trust_runtime::harness::SourceFile::with_path(
-        "__ide_bootstrap__.st",
-        "PROGRAM Main\nEND_PROGRAM\n".to_string(),
-    )]);
-    let runtime = session.build_runtime()?;
+    let runtime = compile_runtime_from_sources(&sources)?;
 
     Ok(LoadedRuntime {
         bundle: None,
@@ -71,5 +67,10 @@ fn compile_runtime_from_sources(sources: &SourceRegistry) -> anyhow::Result<Runt
             })
             .collect(),
     );
-    session.build_runtime().map_err(Into::into)
+    let mut runtime = session.build_runtime()?;
+    let bytecode = session.build_bytecode_bytes()?;
+    runtime
+        .apply_bytecode_bytes(&bytecode, None)
+        .map_err(anyhow::Error::from)?;
+    Ok(runtime)
 }

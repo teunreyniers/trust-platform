@@ -52,21 +52,17 @@ fn validate_type_table(strings: &StringTable, types: &TypeTable) -> Result<(), B
 }
 
 fn validate_const_pool(
-    strings: &StringTable,
+    _strings: &StringTable,
     types: &TypeTable,
     pool: &ConstPool,
 ) -> Result<(), BytecodeError> {
     for entry in &pool.entries {
-        validate_const_payload(strings, types, entry)?;
+        validate_const_payload(types, entry)?;
     }
     Ok(())
 }
 
-fn validate_const_payload(
-    strings: &StringTable,
-    types: &TypeTable,
-    entry: &ConstEntry,
-) -> Result<(), BytecodeError> {
+fn validate_const_payload(types: &TypeTable, entry: &ConstEntry) -> Result<(), BytecodeError> {
     let type_id = entry.type_id;
     let payload = &entry.payload;
     let entry = types
@@ -77,7 +73,7 @@ fn validate_const_payload(
             index: type_id,
         })?;
     let mut reader = BytecodeReader::new(payload);
-    validate_const_payload_entry(strings, types, entry, &mut reader)?;
+    validate_const_payload_entry(types, entry, &mut reader)?;
     if reader.remaining() != 0 {
         return Err(BytecodeError::InvalidSection("const payload length".into()));
     }
@@ -85,7 +81,6 @@ fn validate_const_payload(
 }
 
 fn validate_const_payload_entry(
-    strings: &StringTable,
     types: &TypeTable,
     entry: &TypeEntry,
     reader: &mut BytecodeReader<'_>,
@@ -110,9 +105,30 @@ fn validate_const_payload_entry(
             14 => {
                 reader.read_u32()?;
             }
-            24 | 25 => {
-                let idx = reader.read_u32()?;
-                ensure_string_index(strings, idx)?;
+            24 => {
+                let payload = reader.read_bytes(reader.remaining())?;
+                std::str::from_utf8(payload).map_err(|err| {
+                    BytecodeError::InvalidSection(
+                        format!("invalid STRING const UTF-8: {err}").into(),
+                    )
+                })?;
+            }
+            25 => {
+                let payload = reader.read_bytes(reader.remaining())?;
+                if payload.len() % 2 != 0 {
+                    return Err(BytecodeError::InvalidSection(
+                        "invalid WSTRING const payload length".into(),
+                    ));
+                }
+                let units = payload
+                    .chunks_exact(2)
+                    .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+                    .collect::<Vec<_>>();
+                String::from_utf16(&units).map_err(|err| {
+                    BytecodeError::InvalidSection(
+                        format!("invalid WSTRING const UTF-16: {err}").into(),
+                    )
+                })?;
             }
             _ => {
                 return Err(BytecodeError::InvalidSection("unknown primitive".into()));
@@ -127,7 +143,7 @@ fn validate_const_payload_entry(
                 }
             })?;
             for _ in 0..count {
-                validate_const_payload_entry(strings, types, elem, reader)?;
+                validate_const_payload_entry(types, elem, reader)?;
             }
         }
         TypeData::Struct { fields } | TypeData::Union { fields } => {
@@ -140,11 +156,11 @@ fn validate_const_payload_entry(
             for field in fields {
                 let field_type = types.entries.get(field.type_id as usize).ok_or_else(|| {
                     BytecodeError::InvalidIndex {
-                        kind: "type".into(),
-                        index: field.type_id,
-                    }
-                })?;
-                validate_const_payload_entry(strings, types, field_type, reader)?;
+                    kind: "type".into(),
+                    index: field.type_id,
+                }
+            })?;
+                validate_const_payload_entry(types, field_type, reader)?;
             }
         }
         TypeData::Enum { .. } => {
@@ -157,7 +173,7 @@ fn validate_const_payload_entry(
                     index: *target_type_id,
                 }
             })?;
-            validate_const_payload_entry(strings, types, target, reader)?;
+            validate_const_payload_entry(types, target, reader)?;
         }
         TypeData::Subrange { base_type_id, .. } => {
             let base = types.entries.get(*base_type_id as usize).ok_or_else(|| {
@@ -166,7 +182,7 @@ fn validate_const_payload_entry(
                     index: *base_type_id,
                 }
             })?;
-            validate_const_payload_entry(strings, types, base, reader)?;
+            validate_const_payload_entry(types, base, reader)?;
         }
         TypeData::Reference { .. } => {
             reader.read_u32()?;

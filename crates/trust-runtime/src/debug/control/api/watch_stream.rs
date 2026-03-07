@@ -106,4 +106,21 @@ impl DebugControl {
         update_watch_snapshot(&mut state, ctx);
         update_snapshot(&mut state, ctx);
     }
+
+    /// Refresh the stored snapshot from raw runtime storage.
+    ///
+    /// This is used by VM backends that do not execute through `EvalContext`
+    /// but still need paused-state snapshots for debugger stack/scopes queries.
+    pub fn refresh_snapshot_from_storage(
+        &self,
+        storage: &crate::memory::VariableStorage,
+        now: crate::value::Duration,
+    ) {
+        let (lock, _) = &*self.state;
+        let mut state = lock.lock().expect("debug state poisoned");
+        state.snapshot = Some(DebugSnapshot {
+            storage: storage.clone(),
+            now,
+        });
+    }
 }

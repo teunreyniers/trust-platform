@@ -9,18 +9,18 @@ use trust_runtime::value::{ArrayValue, StructValue, Value};
 #[test]
 fn index_and_field() {
     let mut storage = VariableStorage::new();
-    let array = Value::Array(ArrayValue {
+    let array = Value::Array(Box::new(ArrayValue {
         elements: vec![Value::Int(1), Value::Int(2), Value::Int(3)],
         dimensions: vec![(0, 2)],
-    });
+    }));
     storage.set_global("arr", array);
 
     let mut fields = IndexMap::new();
     fields.insert("a".into(), Value::Int(10));
-    let struct_value = Value::Struct(StructValue {
+    let struct_value = Value::Struct(Box::new(StructValue {
         type_name: "S".into(),
         fields,
-    });
+    }));
     storage.set_global("st", struct_value);
 
     let registry = TypeRegistry::new();

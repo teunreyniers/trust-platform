@@ -2,6 +2,7 @@ fn validate_pou_index(
     strings: &StringTable,
     types: &TypeTable,
     const_pool: &ConstPool,
+    ref_table: &RefTable,
     index: &PouIndex,
     bodies: &[u8],
 ) -> Result<(), BytecodeError> {
@@ -64,14 +65,25 @@ fn validate_pou_index(
                 "POU code out of bounds".into(),
             ));
         }
-        validate_instruction_stream(index, types, start, &bodies[start..end])?;
+        validate_instruction_stream(
+            strings,
+            index,
+            types,
+            const_pool,
+            ref_table,
+            start,
+            &bodies[start..end],
+        )?;
     }
     Ok(())
 }
 
 fn validate_instruction_stream(
+    strings: &StringTable,
     index: &PouIndex,
     types: &TypeTable,
+    const_pool: &ConstPool,
+    ref_table: &RefTable,
     _base: usize,
     code: &[u8],
 ) -> Result<(), BytecodeError> {
@@ -83,7 +95,7 @@ fn validate_instruction_stream(
         starts.push(pc as i32);
         let opcode = reader.read_u8()?;
         match opcode {
-            0x00 | 0x01 | 0x06 | 0x11 | 0x12 | 0x13 | 0x14 | 0x15 | 0x31 | 0x32 | 0x33 | 0x40
+            0x00 | 0x01 | 0x06 | 0x11 | 0x12 | 0x13 | 0x14 | 0x15 | 0x25 | 0x31 | 0x32 | 0x33 | 0x40
             | 0x41 | 0x42 | 0x43 | 0x44 | 0x45 | 0x46 | 0x47 | 0x48 | 0x49 | 0x4A | 0x4B | 0x4C
             | 0x4D | 0x4E | 0x50 | 0x51 | 0x52 | 0x53 | 0x54 | 0x55 => {}
             0x02..=0x04 => {
@@ -122,22 +134,51 @@ fn validate_instruction_stream(
                     }
                 }
             }
+            0x09 => {
+                let kind = reader.read_u32()?;
+                let symbol_idx = reader.read_u32()?;
+                let arg_count = reader.read_u32()?;
+                if kind > 3 {
+                    return Err(BytecodeError::InvalidSection(
+                        "CALL_NATIVE kind out of range".into(),
+                    ));
+                }
+                if symbol_idx as usize >= strings.entries.len() {
+                    return Err(BytecodeError::InvalidIndex {
+                        kind: "native symbol".into(),
+                        index: symbol_idx,
+                    });
+                }
+                if arg_count > 1024 {
+                    return Err(BytecodeError::InvalidSection(
+                        "CALL_NATIVE arg_count out of range".into(),
+                    ));
+                }
+            }
             0x10 => {
-                reader.read_u32()?;
+                let const_idx = reader.read_u32()?;
+                ensure_const_index(const_pool, const_idx)?;
             }
             0x16 => {
                 reader.read_u8()?;
             }
             0x20..=0x22 => {
-                reader.read_u32()?;
+                let ref_idx = reader.read_u32()?;
+                ensure_ref_index(ref_table, ref_idx)?;
             }
-            0x23 => {}
+            0x23 | 0x24 => {}
             0x30 => {
-                reader.read_u32()?;
+                let name_idx = reader.read_u32()?;
+                ensure_string_index(strings, name_idx)?;
             }
             0x60 => {
                 let type_id = reader.read_u32()?;
                 ensure_type_index(types, type_id)?;
+            }
+            0x61 => {}
+            0x62 | 0x63 => {
+                let operand = reader.read_u32()?;
+                validate_partial_access_operand(operand)?;
             }
             0x70 => {
                 reader.read_u32()?;
@@ -155,6 +196,29 @@ fn validate_instruction_stream(
         if target != code_len && !start_set.contains(&target) {
             return Err(BytecodeError::InvalidJumpTarget(target));
         }
+    }
+    Ok(())
+}
+
+fn validate_partial_access_operand(operand: u32) -> Result<(), BytecodeError> {
+    if (operand & !0x3FF) != 0 {
+        return Err(BytecodeError::InvalidSection(
+            "partial-access operand out of range".into(),
+        ));
+    }
+    let kind = (operand >> 8) & 0x03;
+    let index = (operand & 0xFF) as u8;
+    let max = match kind {
+        0 => 63, // bit
+        1 => 7,  // byte
+        2 => 3,  // word
+        3 => 1,  // dword
+        _ => unreachable!(),
+    };
+    if index > max {
+        return Err(BytecodeError::InvalidSection(
+            "partial-access index out of range".into(),
+        ));
     }
     Ok(())
 }

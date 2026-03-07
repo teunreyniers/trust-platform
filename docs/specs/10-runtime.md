@@ -1,26 +1,27 @@
 # truST Platform Runtime and Tooling Specification
 
 ## Status and scope
-- Current runtime: tree-walking interpreter over a lowered eval AST (trust-syntax + trust-hir).
-- Bytecode (STBC) is used for packaging and metadata; there is no bytecode VM in the runtime yet.
+- Current runtime (production): bytecode VM execution over STBC modules (`ExecutionBackend::BytecodeVm`).
+- Legacy interpreter execution is feature-gated (`legacy-interpreter`) and retained only for parity/differential/benchmark oracle workflows.
+- Production startup selection is VM-only (`run`/`play` reject interpreter backend selection).
 - Debugger uses DAP plus the runtime control protocol; LSP/IDE technical spec is included below.
 - Salsa incremental queries are used in `trust-hir` (analysis/LSP path), not in the deterministic runtime scan loop.
 - IEC language specs remain in docs/specs/01-09-*.md.
 
-## Runtime Interpreter
+## Runtime Execution Engine
 
 IEC 61131-3 Edition 3.0 (2013) - Runtime Execution
 
-This specification defines the trust-runtime crate, a tree-walking interpreter for IEC 61131-3 Structured Text with cycle-based, deterministic execution suitable for testing PLC code.
+This specification defines the `trust-runtime` execution engine for IEC 61131-3 Structured Text with cycle-based deterministic execution. The primary execution path is the bytecode VM; the legacy interpreter remains an opt-in parity oracle.
 
 ### 1. Overview
 
 #### 1.1 Design Goals
 
-1. **Tree-walking interpreter**: Execute a lowered eval AST (from trust-syntax + trust-hir) rather than a bytecode VM
+1. **VM-first execution**: Execute validated STBC bytecode in the runtime VM dispatch loop
 2. **Cycle-based execution**: Execute programs in discrete cycles, not continuous loops
 3. **Deterministic**: Same inputs produce same outputs, ordered iteration via IndexMap
-4. **Testable**: First-class support for unit testing PLC logic
+4. **Testable**: First-class support for unit testing PLC logic and VM-vs-interpreter differential checks
 5. **Zero unsafe**: Follows `unsafe_code = "forbid"` convention
 
 #### 1.2 Architecture
@@ -30,9 +31,9 @@ crates/trust-runtime/
 ├── Cargo.toml
 ├── src/
 │   ├── lib.rs            # Public API, Runtime struct
-│   ├── bytecode/         # STBC encode/decode + metadata
-│   ├── eval/             # Lowered AST eval (expr/stmt)
-│   ├── runtime/          # Runtime core + subsystems
+│   ├── bytecode/         # STBC encode/decode + metadata/debug maps
+│   ├── eval/             # Legacy interpreter path (feature-gated parity oracle)
+│   ├── runtime/          # Runtime core + VM dispatch/execution subsystems
 │   ├── stdlib/           # Standard functions + FBs
 │   ├── value/            # Value types + date/time profile
 │   ├── io/               # I/O drivers
@@ -1165,7 +1166,7 @@ fn test_timer() {
 
 ### 12. Implementation Phases
 
-#### Phase 1: Core Interpreter
+#### Phase 1: Core Runtime (legacy interpreter-first milestone)
 
 - Value enum with elementary types
 - Variable storage (globals, local frames)
@@ -1249,7 +1250,7 @@ Test against IEC 61131-3 examples from specification.
 
 ## ST Runtime Implementation Specification
 
-**Status:** Planned architecture. The current runtime is the interpreter described above; bytecode execution is not implemented yet.
+**Status:** Implemented architecture. Production runtime executes STBC bytecode through the VM by default; interpreter execution is retained only for parity/test-oracle workflows.
 
 ### 1. Purpose
 
@@ -1718,9 +1719,9 @@ The thin clock abstraction approach provides:
 
 The runtime is implemented in Rust, using the standard library for desktop targets initially. Embedded backends are planned with identical runtime logic and alternate clock implementations.
 
-## ST Bytecode Format Specification (Draft)
+## ST Bytecode Format Specification
 
-**Status:** Implemented as a container + metadata format. The runtime currently applies metadata from STBC; it does not execute bytecode instructions.
+**Status:** Implemented container + execution format. The runtime validates STBC sections and executes bytecode instructions through the VM backend.
 
 ### 1. Purpose
 

@@ -1,3 +1,5 @@
+#[cfg(feature = "legacy-interpreter")]
+use trust_runtime::execution_backend::ExecutionBackend;
 use trust_runtime::harness::TestHarness;
 use trust_runtime::value::Value;
 
@@ -52,7 +54,19 @@ fn var_and_stmt_coverage() {
     "#;
 
     let mut harness = TestHarness::from_source(source).unwrap();
-    harness.cycle();
+    #[cfg(feature = "legacy-interpreter")]
+    harness
+        .runtime_mut()
+        .set_execution_backend(ExecutionBackend::Interpreter)
+        .expect("switch to interpreter backend");
+
+    let cycle = harness.cycle();
+
+    assert!(
+        cycle.errors.is_empty(),
+        "unexpected runtime errors: {:?}",
+        cycle.errors
+    );
     harness.assert_eq("count", 7i32);
 
     let arr = harness.get_output("arr").expect("missing arr");
