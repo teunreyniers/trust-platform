@@ -4,6 +4,7 @@ pub(crate) fn lower_configuration(
     profile: crate::value::DateTimeProfile,
     file_id: u32,
     statement_locations: &mut Vec<crate::debug::SourceLocation>,
+    const_values: std::sync::Arc<rustc_hash::FxHashMap<(Option<smol_str::SmolStr>, smol_str::SmolStr), i64>>,
 ) -> Result<Option<ConfigModel>, CompileError> {
     let configs: Vec<SyntaxNode> = syntax
         .descendants()
@@ -25,6 +26,8 @@ pub(crate) fn lower_configuration(
         using,
         file_id,
         statement_locations,
+        const_values,
+        current_pou_name: None,
     };
     let mut globals = Vec::new();
     let mut tasks = Vec::new();

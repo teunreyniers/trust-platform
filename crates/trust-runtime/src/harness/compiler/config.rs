@@ -39,6 +39,8 @@ pub(crate) fn lower_root_global_var_blocks(
         using,
         file_id,
         statement_locations,
+        const_values: std::sync::Arc::new(rustc_hash::FxHashMap::default()),
+        current_pou_name: None,
     };
     let globals = lower_root_global_var_blocks_in_scope(node, &mut ctx)?;
     Ok(globals)

@@ -1,4 +1,6 @@
+use rustc_hash::FxHashMap;
 use smol_str::SmolStr;
+use std::sync::Arc;
 
 use crate::debug::SourceLocation;
 use crate::io::IoAddress;
@@ -101,4 +103,8 @@ pub(crate) struct LoweringContext<'a> {
     pub(crate) using: Vec<SmolStr>,
     pub(crate) file_id: u32,
     pub(crate) statement_locations: &'a mut Vec<SourceLocation>,
+    /// Constant values from HIR symbol tables (all files combined), keyed by (scope, name).
+    pub(crate) const_values: Arc<FxHashMap<(Option<SmolStr>, SmolStr), i64>>,
+    /// Uppercase name of the POU currently being lowered, for scoped constant lookup.
+    pub(crate) current_pou_name: Option<SmolStr>,
 }

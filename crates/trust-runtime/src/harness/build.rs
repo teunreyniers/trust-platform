@@ -67,6 +67,16 @@ pub(super) fn build_runtime_from_source_files(
         return Err(CompileError::new(diagnostics_errors.join("\n")));
     }
 
+    // Collect all constant values from HIR symbol tables so they can be used during lowering.
+    let mut all_const_values = rustc_hash::FxHashMap::default();
+    for file_id in &file_ids {
+        let symbols = project.database().file_symbols(trust_hir::db::FileId(file_id.0));
+        for (key, val) in symbols.const_values() {
+            all_const_values.insert(key.clone(), *val);
+        }
+    }
+    let const_values = std::sync::Arc::new(all_const_values);
+
     let mut runtime = Runtime::new();
     let profile = runtime.profile();
     let mut statement_locations: Vec<Vec<SourceLocation>> = vec![Vec::new(); sources.len()];
@@ -98,6 +108,7 @@ pub(super) fn build_runtime_from_source_files(
             profile,
             file_ids[idx].0,
             &mut statement_locations[idx],
+            std::sync::Arc::clone(&const_values),
         )?;
         for interface_def in interfaces {
             let key = interface_def.name.to_ascii_uppercase();
@@ -120,6 +131,7 @@ pub(super) fn build_runtime_from_source_files(
             profile,
             file_ids[idx].0,
             &mut statement_locations[idx],
+            std::sync::Arc::clone(&const_values),
         )?;
         for class_def in classes {
             let key = class_def.name.to_ascii_uppercase();
@@ -142,6 +154,7 @@ pub(super) fn build_runtime_from_source_files(
             profile,
             file_ids[idx].0,
             &mut statement_locations[idx],
+            std::sync::Arc::clone(&const_values),
         )?;
         for fb in function_blocks {
             let key = fb.name.to_ascii_uppercase();
@@ -164,6 +177,7 @@ pub(super) fn build_runtime_from_source_files(
             profile,
             file_ids[idx].0,
             &mut statement_locations[idx],
+            std::sync::Arc::clone(&const_values),
         )?;
         for func in functions {
             let key = func.name.to_ascii_uppercase();
@@ -194,6 +208,7 @@ pub(super) fn build_runtime_from_source_files(
             profile,
             file_ids[idx].0,
             &mut statement_locations[idx],
+            std::sync::Arc::clone(&const_values),
         )?;
         for program in lowered {
             let key = program.program.name.to_ascii_uppercase();
@@ -217,6 +232,7 @@ pub(super) fn build_runtime_from_source_files(
             profile,
             file_ids[idx].0,
             &mut statement_locations[idx],
+            std::sync::Arc::clone(&const_values),
         )? {
             if config_model.is_some() {
                 return Err(CompileError::new(

@@ -57,6 +57,8 @@ pub fn parse_debug_expression(
         using: using.to_vec(),
         file_id: 0,
         statement_locations: &mut statement_locations,
+        const_values: std::sync::Arc::new(rustc_hash::FxHashMap::default()),
+        current_pou_name: None,
     };
     super::lower_expr(expr, &mut ctx)
 }
@@ -109,6 +111,8 @@ pub fn parse_debug_lvalue(
         using: using.to_vec(),
         file_id: 0,
         statement_locations: &mut statement_locations,
+        const_values: std::sync::Arc::new(rustc_hash::FxHashMap::default()),
+        current_pou_name: None,
     };
     super::lower::lower_lvalue(target, &mut ctx)
 }

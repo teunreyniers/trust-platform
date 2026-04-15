@@ -99,6 +99,8 @@ fn lower_type_decl_node(
         using,
         file_id,
         statement_locations,
+        const_values: std::sync::Arc::new(rustc_hash::FxHashMap::default()),
+        current_pou_name: None,
     };
     let mut pending_name: Option<SmolStr> = None;
     for child in node.children() {

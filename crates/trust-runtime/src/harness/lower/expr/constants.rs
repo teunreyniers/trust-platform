@@ -33,6 +33,26 @@ pub(in crate::harness) fn const_int_from_node(
     ctx: &mut LoweringContext<'_>,
 ) -> Result<i64, CompileError> {
     let expr = lower_expr(node, ctx)?;
+    // If the expression is a name reference, try to resolve it as a compile-time constant.
+    let expr = if let crate::program_model::Expr::Name(name) = &expr {
+        let name_upper = smol_str::SmolStr::new(name.to_ascii_uppercase());
+        let value = ctx
+            .current_pou_name
+            .as_ref()
+            .and_then(|pou| {
+                ctx.const_values
+                    .get(&(Some(pou.clone()), name_upper.clone()))
+            })
+            .or_else(|| ctx.const_values.get(&(None, name_upper)))
+            .copied();
+        if let Some(v) = value {
+            crate::program_model::Expr::Literal(crate::value::Value::LInt(v))
+        } else {
+            expr
+        }
+    } else {
+        expr
+    };
     let value = crate::helper_eval::eval_const_expr(&expr, &ctx.profile)
         .map_err(|err| CompileError::new(err.to_string()))?;
     match value {

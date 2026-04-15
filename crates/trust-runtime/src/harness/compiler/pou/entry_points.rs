@@ -4,6 +4,7 @@ pub(crate) fn lower_programs(
     profile: DateTimeProfile,
     file_id: u32,
     statement_locations: &mut Vec<crate::debug::SourceLocation>,
+    const_values: std::sync::Arc<rustc_hash::FxHashMap<(Option<SmolStr>, SmolStr), i64>>,
 ) -> Result<Vec<LoweredProgram>, CompileError> {
     let mut programs = Vec::new();
     for program_node in syntax
@@ -16,6 +17,7 @@ pub(crate) fn lower_programs(
             profile,
             file_id,
             statement_locations,
+            std::sync::Arc::clone(&const_values),
         )?);
     }
     Ok(programs)
@@ -27,6 +29,7 @@ pub(crate) fn lower_functions(
     profile: DateTimeProfile,
     file_id: u32,
     statement_locations: &mut Vec<crate::debug::SourceLocation>,
+    const_values: std::sync::Arc<rustc_hash::FxHashMap<(Option<SmolStr>, SmolStr), i64>>,
 ) -> Result<Vec<FunctionDef>, CompileError> {
     let mut functions = Vec::new();
     for func_node in syntax
@@ -40,6 +43,8 @@ pub(crate) fn lower_functions(
             using,
             file_id,
             statement_locations,
+            const_values: std::sync::Arc::clone(&const_values),
+            current_pou_name: None,
         };
         functions.push(lower_function_node(&func_node, &mut ctx)?);
     }
@@ -52,6 +57,7 @@ pub(crate) fn lower_function_blocks(
     profile: DateTimeProfile,
     file_id: u32,
     statement_locations: &mut Vec<crate::debug::SourceLocation>,
+    const_values: std::sync::Arc<rustc_hash::FxHashMap<(Option<SmolStr>, SmolStr), i64>>,
 ) -> Result<Vec<FunctionBlockDef>, CompileError> {
     let mut function_blocks = Vec::new();
     for fb_node in syntax
@@ -65,6 +71,8 @@ pub(crate) fn lower_function_blocks(
             using,
             file_id,
             statement_locations,
+            const_values: std::sync::Arc::clone(&const_values),
+            current_pou_name: None,
         };
         function_blocks.push(lower_function_block_node(&fb_node, &mut ctx)?);
     }
@@ -77,6 +85,7 @@ pub(crate) fn lower_classes(
     profile: DateTimeProfile,
     file_id: u32,
     statement_locations: &mut Vec<crate::debug::SourceLocation>,
+    const_values: std::sync::Arc<rustc_hash::FxHashMap<(Option<SmolStr>, SmolStr), i64>>,
 ) -> Result<Vec<ClassDef>, CompileError> {
     let mut classes = Vec::new();
     for class_node in syntax
@@ -90,6 +99,8 @@ pub(crate) fn lower_classes(
             using,
             file_id,
             statement_locations,
+            const_values: std::sync::Arc::clone(&const_values),
+            current_pou_name: None,
         };
         classes.push(lower_class_node(&class_node, &mut ctx)?);
     }
@@ -102,6 +113,7 @@ pub(crate) fn lower_interfaces(
     profile: DateTimeProfile,
     file_id: u32,
     statement_locations: &mut Vec<crate::debug::SourceLocation>,
+    const_values: std::sync::Arc<rustc_hash::FxHashMap<(Option<SmolStr>, SmolStr), i64>>,
 ) -> Result<Vec<InterfaceDef>, CompileError> {
     let mut interfaces = Vec::new();
     for interface_node in syntax
@@ -115,6 +127,8 @@ pub(crate) fn lower_interfaces(
             using,
             file_id,
             statement_locations,
+            const_values: std::sync::Arc::clone(&const_values),
+            current_pou_name: None,
         };
         interfaces.push(lower_interface_node(&interface_node, &mut ctx)?);
     }

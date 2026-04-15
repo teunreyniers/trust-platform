@@ -4,6 +4,7 @@ fn lower_program_node(
     profile: DateTimeProfile,
     file_id: u32,
     statement_locations: &mut Vec<crate::debug::SourceLocation>,
+    const_values: std::sync::Arc<rustc_hash::FxHashMap<(Option<SmolStr>, SmolStr), i64>>,
 ) -> Result<LoweredProgram, CompileError> {
     let name = qualified_pou_name(program_node)?;
     let using = collect_using_directives(program_node);
@@ -13,6 +14,8 @@ fn lower_program_node(
         using,
         file_id,
         statement_locations,
+        const_values,
+        current_pou_name: Some(SmolStr::new(name.to_ascii_uppercase())),
     };
     let vars = lower_program_var_blocks(program_node, &mut ctx)?;
     let body = lower_stmt_list(program_node, &mut ctx)?;
@@ -33,6 +36,7 @@ fn lower_function_block_node(
     ctx: &mut LoweringContext<'_>,
 ) -> Result<FunctionBlockDef, CompileError> {
     let name = qualified_pou_name(node)?;
+    ctx.current_pou_name = Some(SmolStr::new(name.to_ascii_uppercase()));
     let mut base = None;
     if let Some(extends_clause) = node
         .children()
@@ -161,6 +165,7 @@ fn lower_function_node(
     ctx: &mut LoweringContext<'_>,
 ) -> Result<FunctionDef, CompileError> {
     let name = qualified_pou_name(node)?;
+    ctx.current_pou_name = Some(SmolStr::new(name.to_ascii_uppercase()));
     let return_type = node
         .children()
         .find(|child| child.kind() == SyntaxKind::TypeRef)
@@ -199,6 +204,8 @@ fn lower_method_node(
         using,
         file_id: ctx.file_id,
         statement_locations: ctx.statement_locations,
+        const_values: std::sync::Arc::clone(&ctx.const_values),
+        current_pou_name: ctx.current_pou_name.clone(),
     };
 
     let return_type = node

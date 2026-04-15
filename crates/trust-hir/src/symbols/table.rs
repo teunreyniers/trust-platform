@@ -459,6 +459,12 @@ impl SymbolTable {
         self.const_values.get(&key).copied()
     }
 
+    /// Returns all constant values keyed by (scope, name).
+    #[must_use]
+    pub fn const_values(&self) -> &FxHashMap<(Option<SmolStr>, SmolStr), i64> {
+        &self.const_values
+    }
+
     /// Returns an iterator over all symbols.
     pub fn iter(&self) -> impl Iterator<Item = &Symbol> {
         self.symbols.values()

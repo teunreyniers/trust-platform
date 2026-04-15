@@ -55,7 +55,16 @@ impl VmTrap {
             Self::InvalidNativeCall(message) => RuntimeError::InvalidBytecode(
                 format!("vm invalid CALL_NATIVE payload: {message}").into(),
             ),
-            Self::Runtime(err) => err,
+            Self::Runtime(err) => {
+                #[cfg(debug_assertions)]
+                if matches!(err, RuntimeError::TypeMismatch) {
+                    eprintln!(
+                        "[DEBUG] TypeMismatch via VmTrap::Runtime at:\n{:?}",
+                        std::backtrace::Backtrace::force_capture()
+                    );
+                }
+                err
+            }
             Self::InvalidOpcode(opcode) => {
                 RuntimeError::InvalidBytecode(format!("vm invalid opcode 0x{opcode:02X}").into())
             }
