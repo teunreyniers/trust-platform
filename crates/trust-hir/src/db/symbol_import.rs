@@ -326,6 +326,7 @@ impl<'a> SymbolImporter<'a> {
                         name: field.name,
                         type_id: self.import_type(source_file, field.type_id),
                         address: field.address,
+                        default: field.default.clone(),
                     })
                     .collect();
                 self.target.register_struct_type(name.clone(), fields)

@@ -102,6 +102,7 @@ impl SymbolCollector {
                     name: field_name,
                     type_id: field_type,
                     address: direct_address.clone(),
+                    default: None,
                 });
             }
         }

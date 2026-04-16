@@ -5,7 +5,7 @@ use trust_syntax::syntax::{SyntaxKind, SyntaxNode};
 use crate::debug::SourceLocation;
 use crate::value::DateTimeProfile;
 
-use super::super::lower::{const_int_from_node, parse_subrange};
+use super::super::lower::{const_int_from_node, lower_expr, parse_subrange};
 use super::super::types::CompileError;
 use super::super::util::{
     builtin_type_name, collect_using_directives, is_expression_kind, node_text,
@@ -192,17 +192,51 @@ fn lower_struct_def(
         .children()
         .filter(|child| child.kind() == SyntaxKind::VarDecl)
     {
-        let (names, type_ref, _initializer, address) = parse_var_decl(&var_decl)?;
+        let (names, type_ref, initializer_node, address) = parse_var_decl(&var_decl)?;
         let type_id = lower_type_ref(&type_ref, ctx)?;
+        let field_default = initializer_node
+            .as_ref()
+            .and_then(|init| eval_struct_field_default(init, ctx));
         for name in names {
             fields.push(trust_hir::types::StructField {
                 name,
                 type_id,
                 address: address.clone(),
+                default: field_default.clone(),
             });
         }
     }
     Ok(fields)
+}
+
+/// Evaluate a struct field initializer expression as a constant `FieldDefaultValue`.
+/// Returns `None` if the expression is not a supported constant form.
+fn eval_struct_field_default(
+    node: &SyntaxNode,
+    ctx: &mut LoweringContext<'_>,
+) -> Option<trust_hir::FieldDefaultValue> {
+    let expr = lower_expr(node, ctx).ok()?;
+    let value = crate::helper_eval::eval_const_expr(&expr, &ctx.profile).ok()?;
+    match value {
+        crate::value::Value::Bool(b) => Some(trust_hir::FieldDefaultValue::Bool(b)),
+        crate::value::Value::SInt(v) => Some(trust_hir::FieldDefaultValue::Integer(v as i64)),
+        crate::value::Value::Int(v) => Some(trust_hir::FieldDefaultValue::Integer(v as i64)),
+        crate::value::Value::DInt(v) => Some(trust_hir::FieldDefaultValue::Integer(v as i64)),
+        crate::value::Value::LInt(v) => Some(trust_hir::FieldDefaultValue::Integer(v)),
+        crate::value::Value::USInt(v) => Some(trust_hir::FieldDefaultValue::Integer(v as i64)),
+        crate::value::Value::UInt(v) => Some(trust_hir::FieldDefaultValue::Integer(v as i64)),
+        crate::value::Value::UDInt(v) => Some(trust_hir::FieldDefaultValue::Integer(v as i64)),
+        crate::value::Value::ULInt(v) => {
+            Some(trust_hir::FieldDefaultValue::Integer(v as i64))
+        }
+        crate::value::Value::Byte(v) => Some(trust_hir::FieldDefaultValue::Integer(v as i64)),
+        crate::value::Value::Word(v) => Some(trust_hir::FieldDefaultValue::Integer(v as i64)),
+        crate::value::Value::DWord(v) => Some(trust_hir::FieldDefaultValue::Integer(v as i64)),
+        crate::value::Value::LWord(v) => Some(trust_hir::FieldDefaultValue::Integer(v as i64)),
+        crate::value::Value::Real(v) => Some(trust_hir::FieldDefaultValue::Real(v as f64)),
+        crate::value::Value::LReal(v) => Some(trust_hir::FieldDefaultValue::Real(v)),
+        _ => None,
+    }
 }
 
 fn lower_enum_def(

@@ -207,6 +207,25 @@ impl TypeId {
     }
 }
 
+/// A constant default value for a struct field, evaluated from the TYPE declaration.
+///
+/// This covers the primitive types that can appear as struct field initializers
+/// in IEC 61131-3 TYPE declarations. The variant is chosen based on the literal
+/// kind; the exact runtime type is resolved using the field's `type_id` at
+/// instantiation time.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FieldDefaultValue {
+    /// Boolean literal (`TRUE` / `FALSE`).
+    Bool(bool),
+    /// Integer literal (covers all signed and unsigned integer types).
+    Integer(i64),
+    /// Floating-point literal (covers `REAL` and `LREAL`).
+    Real(f64),
+}
+
+// Manual Eq impl because f64 doesn't impl Eq.
+impl Eq for FieldDefaultValue {}
+
 /// Field definition for structured types.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructField {
@@ -216,6 +235,8 @@ pub struct StructField {
     pub type_id: TypeId,
     /// Optional direct address (`AT`) for the field.
     pub address: Option<SmolStr>,
+    /// Declared default value from the TYPE definition, if any.
+    pub default: Option<FieldDefaultValue>,
 }
 
 /// Variant definition for union types.

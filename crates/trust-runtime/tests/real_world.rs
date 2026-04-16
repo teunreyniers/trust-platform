@@ -110,3 +110,60 @@ fn samples() {
     let result = harness.cycle();
     assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
+
+/// Regression test: running the otm_lib motor_variable_speed function block for
+/// multiple cycles must not produce a TypeMismatch fault. The user-defined
+/// functions UINT_TO_TIME and UDINT_TO_TIME (defined in conversions.st) shadow
+/// the stdlib conversion-name pattern, and must be dispatched as user functions.
+#[test]
+fn otm_lib_motor_variable_speed_no_type_mismatch() {
+    let conversions = include_str!("../../../examples/otm_lib/src/conversions.st");
+    let udt = include_str!("../../../examples/otm_lib/src/motor_variable_speed_udt.st");
+    let pou = include_str!("../../../examples/otm_lib/src/motor_variable_speed_pou.st");
+    // Stripped main: remove VAR_EXTERNAL (no CONFIGURATION with VAR_GLOBAL)
+    let main_prog = r#"
+        PROGRAM Main
+        VAR
+            motor_pou : motor_variable_speed_pou;
+            motor_udt : motor_variable_speed_udt;
+        END_VAR
+        motor_pou(motor_variable_speed := motor_udt);
+        END_PROGRAM
+    "#;
+
+    let sources: &[&str] = &[conversions, udt, pou, main_prog];
+    let mut harness = TestHarness::from_sources(sources).expect("should compile");
+    // Run 10 cycles, advancing 100ms between each to match the real runtime's task interval.
+    for i in 1..=10 {
+        let result = harness.cycle();
+        assert!(
+            result.errors.is_empty(),
+            "cycle {i} errors: {:?}",
+            result.errors
+        );
+        harness.advance_time(trust_runtime::value::Duration::from_millis(100));
+    }
+}
+
+/// Regression test: full otm_lib project (with CONFIGURATION and VAR_GLOBAL I/O)
+/// must not produce a runtime fault over multiple cycles.
+#[test]
+fn otm_lib_full_project_no_fault() {
+    let conversions = include_str!("../../../examples/otm_lib/src/conversions.st");
+    let udt = include_str!("../../../examples/otm_lib/src/motor_variable_speed_udt.st");
+    let pou = include_str!("../../../examples/otm_lib/src/motor_variable_speed_pou.st");
+    let main_prog = include_str!("../../../examples/otm_lib/src/main.st");
+    let config = include_str!("../../../examples/otm_lib/src/config.st");
+
+    let sources: &[&str] = &[conversions, udt, pou, main_prog, config];
+    let mut harness = TestHarness::from_sources(sources).expect("should compile");
+    for i in 1..=5 {
+        let result = harness.cycle();
+        assert!(
+            result.errors.is_empty(),
+            "cycle {i} errors: {:?}",
+            result.errors
+        );
+        harness.advance_time(trust_runtime::value::Duration::from_millis(100));
+    }
+}

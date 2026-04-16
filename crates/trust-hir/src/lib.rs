@@ -44,4 +44,4 @@ pub use ident::{is_reserved_keyword, is_valid_identifier};
 pub use project::{Project, SourceKey, SourceRegistry};
 pub use symbols::{Symbol, SymbolId, SymbolKind};
 pub use type_check::TypeChecker;
-pub use types::{Type, TypeId};
+pub use types::{FieldDefaultValue, Type, TypeId};

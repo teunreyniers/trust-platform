@@ -210,6 +210,7 @@ mod tests {
                 name: "x".into(),
                 type_id: TypeId::INT,
                 address: None,
+                default: None,
             }],
         );
         assert!(registry.is_assignable(TypeId::ANY_DERIVED, struct_id));

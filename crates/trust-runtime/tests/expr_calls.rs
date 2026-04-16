@@ -202,3 +202,85 @@ fn function_in_out_without_conversion_expression_baseline() {
         .expect("generic in-out lowering should fail under current VM constraints");
     assert!(err.to_string().contains("unsupported generic type"));
 }
+
+/// Single-file: a user-defined function whose name matches the `SRC_TO_DST`
+/// conversion pattern must be called as a user function.
+#[test]
+fn user_fn_with_conversion_like_name_is_called_correctly() {
+    let source = r#"
+        FUNCTION UINT_TO_TIME : TIME
+        VAR_INPUT
+            IN : UDINT;
+        END_VAR
+        UINT_TO_TIME := MUL_TIME(IN1 := T#1ms, IN2 := IN);
+        END_FUNCTION
+
+        PROGRAM Main
+        VAR
+            t : TIME;
+            x : UDINT := 500;
+        END_VAR
+        t := UINT_TO_TIME(x);
+        END_PROGRAM
+    "#;
+
+    let mut harness = TestHarness::from_source(source).unwrap();
+    let r1 = harness.cycle();
+    assert!(
+        r1.errors.is_empty(),
+        "cycle 1 should produce no errors, got: {:?}",
+        r1.errors
+    );
+    let r2 = harness.cycle();
+    assert!(
+        r2.errors.is_empty(),
+        "cycle 2 should produce no errors, got: {:?}",
+        r2.errors
+    );
+    harness.assert_eq(
+        "t",
+        trust_runtime::value::Value::Time(trust_runtime::value::Duration::from_millis(500)),
+    );
+}
+
+/// Multi-file: the same scenario as above but with the function defined in a
+/// separate source file, matching the real-world usage in otm_lib.
+#[test]
+fn user_fn_with_conversion_like_name_multifile_is_called_correctly() {
+    let conversions = r#"
+        FUNCTION UINT_TO_TIME : TIME
+        VAR_INPUT
+            IN : UDINT;
+        END_VAR
+        UINT_TO_TIME := MUL_TIME(IN1 := T#1ms, IN2 := IN);
+        END_FUNCTION
+    "#;
+
+    let program = r#"
+        PROGRAM Main
+        VAR
+            t : TIME;
+            x : UDINT := 500;
+        END_VAR
+        t := UINT_TO_TIME(x);
+        END_PROGRAM
+    "#;
+
+    let mut harness = TestHarness::from_sources(&[conversions, program]).unwrap();
+    let r1 = harness.cycle();
+    assert!(
+        r1.errors.is_empty(),
+        "cycle 1 should produce no errors, got: {:?}",
+        r1.errors
+    );
+    let r2 = harness.cycle();
+    assert!(
+        r2.errors.is_empty(),
+        "cycle 2 should produce no errors, got: {:?}",
+        r2.errors
+    );
+    harness.assert_eq(
+        "t",
+        trust_runtime::value::Value::Time(trust_runtime::value::Duration::from_millis(500)),
+    );
+}

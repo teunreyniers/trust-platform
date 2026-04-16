@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 use smol_str::SmolStr;
 use trust_hir::types::TypeRegistry;
-use trust_hir::{Type, TypeId};
+use trust_hir::{FieldDefaultValue, Type, TypeId};
 
 use super::{
     ArrayValue, DateTimeProfile, DateTimeValue, DateValue, Duration, EnumValue, LDateTimeValue,
@@ -83,7 +83,11 @@ fn default_value_for_type(
         Type::Struct { name, fields } => {
             let mut values = IndexMap::new();
             for field in fields {
-                let field_value = default_value_for_type_id(field.type_id, registry, profile)?;
+                let field_value = if let Some(ref default) = field.default {
+                    apply_field_default(default, field.type_id, registry)?
+                } else {
+                    default_value_for_type_id(field.type_id, registry, profile)?
+                };
                 values.insert(field.name.clone(), field_value);
             }
             Ok(Value::Struct(std::sync::Arc::new(StructValue {
@@ -149,6 +153,40 @@ fn array_len(dimensions: &[(i64, i64)]) -> Result<usize, DefaultValueError> {
         total *= len;
     }
     usize::try_from(total).map_err(|_| DefaultValueError::InvalidArrayBounds)
+}
+
+/// Convert a [`FieldDefaultValue`] to a concrete [`Value`] using the field's type ID.
+fn apply_field_default(
+    default: &FieldDefaultValue,
+    type_id: TypeId,
+    registry: &TypeRegistry,
+) -> Result<Value, DefaultValueError> {
+    match default {
+        FieldDefaultValue::Bool(b) => Ok(Value::Bool(*b)),
+        FieldDefaultValue::Integer(i) => {
+            // Resolve through aliases to find the base integer type.
+            let mut id = type_id;
+            loop {
+                match registry.get(id) {
+                    Some(Type::Alias { target, .. }) => id = *target,
+                    Some(Type::Subrange { base, .. }) => id = *base,
+                    _ => return int_value_of_base(id, *i),
+                }
+            }
+        }
+        FieldDefaultValue::Real(r) => {
+            // Resolve through aliases to find the base numeric type.
+            let mut id = type_id;
+            loop {
+                match registry.get(id) {
+                    Some(Type::Real) => return Ok(Value::Real(*r as f32)),
+                    Some(Type::LReal) => return Ok(Value::LReal(*r)),
+                    Some(Type::Alias { target, .. }) => id = *target,
+                    _ => return Ok(Value::Real(*r as f32)),
+                }
+            }
+        }
+    }
 }
 
 fn int_value_of_base(base: TypeId, value: i64) -> Result<Value, DefaultValueError> {
