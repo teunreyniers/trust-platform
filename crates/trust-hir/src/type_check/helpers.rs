@@ -146,6 +146,27 @@ impl<'a> TypeChecker<'a> {
     }
 }
 
+fn first_non_trivia_token(node: &SyntaxNode) -> Option<SyntaxKind> {
+    node.children_with_tokens()
+        .filter_map(|element| element.into_token())
+        .find(|token| !token.kind().is_trivia())
+        .map(|token| token.kind())
+}
+
+pub(super) fn is_test_pou(node: &SyntaxNode) -> bool {
+    matches!(node.kind(), SyntaxKind::Program | SyntaxKind::FunctionBlock)
+        && first_non_trivia_token(node).is_some_and(|kind| {
+            matches!(
+                kind,
+                SyntaxKind::KwTestProgram | SyntaxKind::KwTestFunctionBlock
+            )
+        })
+}
+
+pub(super) fn is_in_test_context(node: &SyntaxNode) -> bool {
+    node.ancestors().any(|ancestor| is_test_pou(&ancestor))
+}
+
 pub(super) fn direct_address_type(text: &str) -> TypeId {
     let bytes = text.as_bytes();
     if bytes.len() < 2 || bytes[0] != b'%' {

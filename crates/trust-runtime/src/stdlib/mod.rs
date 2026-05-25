@@ -9,6 +9,7 @@ pub mod helpers;
 pub mod numeric;
 pub mod selection;
 pub mod string;
+pub mod test_time;
 pub mod time;
 pub mod validate;
 

@@ -491,6 +491,95 @@ END_PROGRAM
 }
 
 #[test]
+fn test_advance_time_standard_function_ok() {
+    check_no_errors(
+        r#"
+TEST_PROGRAM Test
+ADVANCE_TIME(T#5ms);
+END_TEST_PROGRAM
+"#,
+    );
+}
+
+#[test]
+fn test_set_time_standard_function_ok() {
+    check_no_errors(
+        r#"
+TEST_PROGRAM Test
+SET_TIME(T#100ms);
+END_TEST_PROGRAM
+"#,
+    );
+}
+
+#[test]
+fn test_advance_time_requires_time_input() {
+    check_has_error(
+        r#"
+TEST_PROGRAM Test
+ADVANCE_TIME(INT#1);
+END_TEST_PROGRAM
+"#,
+        DiagnosticCode::InvalidArgumentType,
+    );
+}
+
+#[test]
+fn test_set_time_requires_time_input() {
+    check_has_error(
+        r#"
+TEST_PROGRAM Test
+SET_TIME(TRUE);
+END_TEST_PROGRAM
+"#,
+        DiagnosticCode::InvalidArgumentType,
+    );
+}
+
+#[test]
+fn test_advance_time_in_program_is_undefined() {
+    check_has_error(
+        r#"
+PROGRAM Test
+ADVANCE_TIME(T#5ms);
+END_PROGRAM
+"#,
+        DiagnosticCode::UndefinedFunction,
+    );
+}
+
+#[test]
+fn test_set_time_in_program_is_undefined() {
+    check_has_error(
+        r#"
+PROGRAM Test
+SET_TIME(T#100ms);
+END_PROGRAM
+"#,
+        DiagnosticCode::UndefinedFunction,
+    );
+}
+
+#[test]
+fn test_advance_time_user_function_in_program_ok() {
+    check_no_errors(
+        r#"
+FUNCTION ADVANCE_TIME : DINT
+    VAR_INPUT x : DINT; END_VAR
+    ADVANCE_TIME := x + 1;
+END_FUNCTION
+
+PROGRAM Test
+VAR
+    x : DINT;
+END_VAR
+x := ADVANCE_TIME(x);
+END_PROGRAM
+"#,
+    );
+}
+
+#[test]
 fn test_assert_equal_wrong_arity() {
     check_has_error(
         r#"
