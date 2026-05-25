@@ -69,7 +69,8 @@ fn list_flag_lists_tutorial_10_tests_without_executing() {
     assert!(text.contains("TEST_PROGRAM::LimitAddAndScaling"));
     assert!(text.contains("TEST_FUNCTION_BLOCK::StartStopSequence"));
     assert!(text.contains("TEST_PROGRAM::ComparisonAssertions"));
-    assert!(text.contains("3 test(s) listed"));
+    assert!(text.contains("TEST_FUNCTION_BLOCK::TonTiming"));
+    assert!(text.contains("4 test(s) listed"));
 }
 
 #[test]
@@ -91,7 +92,7 @@ fn trust_runtime_test_alias_forwards_to_trust_dev() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("trust-runtime test"));
     assert!(stderr.contains("trust-dev test"));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("3 test(s) listed"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("4 test(s) listed"));
 }
 
 #[test]

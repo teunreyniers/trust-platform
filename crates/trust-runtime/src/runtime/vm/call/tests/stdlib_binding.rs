@@ -495,3 +495,55 @@ fn bind_stdlib_named_values_variadic_rejects_hole() {
         })
     ));
 }
+
+#[test]
+fn dispatch_native_stdlib_advance_time_updates_runtime_clock() {
+    let mut runtime = Runtime::new();
+    let mut frame = empty_caller_frame();
+
+    dispatch_stdlib(
+        &mut runtime,
+        &mut frame,
+        "ADVANCE_TIME",
+        &[expr_arg(Some("DT"), Value::Time(Duration::from_millis(25)))],
+    )
+    .expect("ADVANCE_TIME should succeed");
+
+    assert_eq!(runtime.current_time(), Duration::from_millis(25));
+}
+
+#[test]
+fn dispatch_native_stdlib_set_time_replaces_runtime_clock() {
+    let mut runtime = Runtime::new();
+    let mut frame = empty_caller_frame();
+    runtime.advance_time(Duration::from_millis(50));
+
+    dispatch_stdlib(
+        &mut runtime,
+        &mut frame,
+        "SET_TIME",
+        &[expr_arg(Some("T"), Value::Time(Duration::from_millis(100)))],
+    )
+    .expect("SET_TIME should succeed");
+
+    assert_eq!(runtime.current_time(), Duration::from_millis(100));
+}
+
+#[test]
+fn dispatch_native_stdlib_advance_time_rejects_non_time_input() {
+    let mut runtime = Runtime::new();
+    let mut frame = empty_caller_frame();
+
+    let err = dispatch_stdlib(
+        &mut runtime,
+        &mut frame,
+        "ADVANCE_TIME",
+        &[expr_arg(Some("DT"), Value::DInt(1))],
+    )
+    .expect_err("ADVANCE_TIME rejects non-TIME input");
+
+    assert!(matches!(
+        err,
+        super::VmTrap::Runtime(RuntimeError::ControlError(_))
+    ));
+}

@@ -309,6 +309,7 @@ impl<'a> BytecodeEncoder<'a> {
                 } else if self.runtime.stdlib().get(name.as_str()).is_some()
                     || crate::stdlib::time::is_runtime_clock_name(key.as_str())
                     || crate::stdlib::time::is_split_name(key.as_str())
+                    || crate::stdlib::test_time::is_test_time_helper_name(key.as_str())
                     || crate::stdlib::conversions::is_conversion_name(key.as_str())
                 {
                     (NativeTargetKind::Stdlib, name.clone(), false)

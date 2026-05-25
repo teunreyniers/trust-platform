@@ -23,7 +23,7 @@ Standard functions are predefined functions available in all IEC 61131-3 impleme
 | `ADD_*`, `SUB_*`, `MUL_*`, `DIV_*`, `CONCAT_*`, `SPLIT_*`, `DAY_OF_WEEK` | Date / time | fixed or overloaded | Tables 35-36 | Implemented |
 | `REF` | Reference | fixed arity | Table 12 | Implemented |
 | `LOWER_BOUND`, `UPPER_BOUND` | Array bound | fixed arity | IEC extension set | Implemented |
-| `ASSERT_*` | Test assertions | fixed arity | non-IEC | Extension; see `docs/IEC_DEVIATIONS.md` DEV-019 |
+| `ASSERT_*`, `ADVANCE_TIME`, `SET_TIME` | Test helpers | fixed arity | non-IEC | Extension; see `docs/IEC_DEVIATIONS.md` DEV-019 |
 
 ### Function Characteristics
 
@@ -490,9 +490,12 @@ The following functions are non-IEC additions for the user-facing ST test framew
 | `ASSERT_GREATER_OR_EQUAL` | `ASSERT_GREATER_OR_EQUAL(VALUE: ANY_ELEMENTARY, BOUND: ANY_ELEMENTARY) : VOID` | Fails test unless `VALUE >= BOUND` |
 | `ASSERT_LESS_OR_EQUAL` | `ASSERT_LESS_OR_EQUAL(VALUE: ANY_ELEMENTARY, BOUND: ANY_ELEMENTARY) : VOID` | Fails test unless `VALUE <= BOUND` |
 | `ASSERT_NEAR` | `ASSERT_NEAR(EXPECTED: ANY_NUM, ACTUAL: ANY_NUM, DELTA: ANY_NUM) : VOID` | Fails test when `ABS(EXPECTED-ACTUAL) > DELTA` |
+| `ADVANCE_TIME` | `ADVANCE_TIME(DT: TIME) : VOID` | Advances the simulation clock by `DT` |
+| `SET_TIME` | `SET_TIME(T: TIME) : VOID` | Sets the simulation clock to absolute time `T` |
 
 Compatibility notes:
-- These assertions are extension-only and not part of IEC 61131-3 Tables 22-36
+- These assertions and time helpers are extension-only and not part of IEC 61131-3 Tables 22-36
   (see `docs/IEC_DEVIATIONS.md`, DEV-019).
 - They are intended for `TEST_PROGRAM` / `TEST_FUNCTION_BLOCK` execution paths.
 - Runtime failures include assertion context (`expected` / `actual` and tolerance data for `ASSERT_NEAR`).
+- Timer FBs (`TON`, `TOF`, `TP`) depend on simulation time advancing between invocations; call `ADVANCE_TIME` (or `SET_TIME`) explicitly between steps. For program-level integration tests with scheduled tasks, use the deterministic harness (`advance_time` + `cycle`) documented in `docs/specs/10-runtime-semantics.md`.
