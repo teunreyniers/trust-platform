@@ -9,6 +9,7 @@ mod helpers;
 mod numeric;
 mod selection;
 mod string;
+mod test_time;
 mod time;
 
 pub(in crate::type_check) use helpers::is_execution_param;
@@ -54,6 +55,8 @@ impl<'a, 'b> StandardChecker<'a, 'b> {
                 "ASSERT_GREATER_OR_EQUAL" => self.infer_assert_greater_or_equal_call(node),
                 "ASSERT_LESS_OR_EQUAL" => self.infer_assert_less_or_equal_call(node),
                 "ASSERT_NEAR" => self.infer_assert_near_call(node),
+                "ADVANCE_TIME" if super::helpers::is_in_test_context(node) => self.infer_advance_time_call(node),
+                "SET_TIME" if super::helpers::is_in_test_context(node) => self.infer_set_time_call(node),
                 "LEN" => self.infer_len_call(node),
                 "LEFT" | "RIGHT" => self.infer_left_right_call(node, &upper),
                 "MID" => self.infer_mid_call(node),

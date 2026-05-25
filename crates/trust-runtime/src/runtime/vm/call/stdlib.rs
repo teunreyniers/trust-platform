@@ -1,7 +1,7 @@
 use smol_str::SmolStr;
 
 use crate::error::RuntimeError;
-use crate::stdlib::{conversions, time, StdParams};
+use crate::stdlib::{conversions, test_time, time, StdParams};
 use crate::value::Value;
 
 use super::super::errors::VmTrap;
@@ -27,6 +27,16 @@ pub(super) fn dispatch_native_stdlib_call(
         }
         return Ok(Value::Time(runtime.current_time()));
     }
+    if test_time::is_advance_time_name(normalized_target_name.as_str()) {
+        let dt = bind_single_in_time_arg(runtime, frame, args, "DT")?;
+        runtime.advance_time(dt);
+        return Ok(Value::Null);
+    }
+    if test_time::is_set_time_name(normalized_target_name.as_str()) {
+        let time = bind_single_in_time_arg(runtime, frame, args, "T")?;
+        runtime.set_current_time(time);
+        return Ok(Value::Null);
+    }
     if time::is_split_name(normalized_target_name.as_str()) {
         return dispatch_native_split_call(runtime, frame, normalized_target_name.as_str(), args);
     }
@@ -44,6 +54,50 @@ pub(super) fn dispatch_native_stdlib_call(
     Err(VmTrap::Runtime(RuntimeError::UndefinedFunction(
         target_name.clone(),
     )))
+}
+
+fn bind_single_in_time_arg(
+    runtime: &mut super::super::super::core::Runtime,
+    frame: &VmFrame,
+    args: &[VmNativeArg],
+    param_name: &str,
+) -> Result<crate::value::Duration, VmTrap> {
+    let positional = args.iter().all(|arg| arg.name.is_none());
+    if positional {
+        if args.len() != 1 {
+            return Err(VmTrap::Runtime(RuntimeError::InvalidArgumentCount {
+                expected: 1,
+                got: args.len(),
+            }));
+        }
+        let value = resolve_vm_arg_value(runtime, frame, &args[0])?;
+        return test_time::parse_time_arg(&value, param_name).map_err(VmTrap::Runtime);
+    }
+
+    if args.iter().any(|arg| arg.name.is_none()) {
+        return Err(VmTrap::Runtime(RuntimeError::InvalidArgumentName(
+            "<unnamed>".into(),
+        )));
+    }
+    if args.len() != 1 {
+        return Err(VmTrap::Runtime(RuntimeError::InvalidArgumentCount {
+            expected: 1,
+            got: args.len(),
+        }));
+    }
+    let arg = &args[0];
+    let Some(name) = arg.name.as_ref() else {
+        return Err(VmTrap::Runtime(RuntimeError::InvalidArgumentName(
+            "<unnamed>".into(),
+        )));
+    };
+    if !name.eq_ignore_ascii_case(param_name) {
+        return Err(VmTrap::Runtime(RuntimeError::InvalidArgumentName(
+            name.clone(),
+        )));
+    }
+    let value = resolve_vm_arg_value(runtime, frame, arg)?;
+    test_time::parse_time_arg(&value, param_name).map_err(VmTrap::Runtime)
 }
 
 pub(super) fn bind_conversion_value(

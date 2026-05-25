@@ -48,6 +48,31 @@ Note: `TEST_PROGRAM`, `TEST_FUNCTION_BLOCK`, and `ASSERT_*` are truST extensions
 | `ASSERT_GREATER_OR_EQUAL` | `ASSERT_GREATER_OR_EQUAL(VALUE, BOUND)` | Fails unless `VALUE >= BOUND` |
 | `ASSERT_LESS_OR_EQUAL` | `ASSERT_LESS_OR_EQUAL(VALUE, BOUND)` | Fails unless `VALUE <= BOUND` |
 | `ASSERT_NEAR` | `ASSERT_NEAR(EXPECTED, ACTUAL, DELTA)` | Fails when `ABS(EXPECTED-ACTUAL) > DELTA` |
+| `ADVANCE_TIME` | `ADVANCE_TIME(DT: TIME)` | Advances simulation time by `DT` |
+| `SET_TIME` | `SET_TIME(T: TIME)` | Sets simulation time to absolute value `T` |
+
+## Testing timers
+
+Timer function blocks (`TON`, `TOF`, `TP`) measure elapsed time between invocations using the runtime simulation clock. By default that clock starts at zero and does not advance automatically during a test.
+
+To test a timer, advance time explicitly between FB calls:
+
+```st
+TEST_FUNCTION_BLOCK TonTiming
+VAR
+    t : TON;
+END_VAR
+
+t(IN := TRUE, PT := T#5ms);
+ADVANCE_TIME(T#5ms);
+t(IN := TRUE, PT := T#5ms);
+ASSERT_TRUE(t.Q);
+END_TEST_FUNCTION_BLOCK
+```
+
+Without `ADVANCE_TIME`, repeated calls at the same simulated time never accumulate elapsed time and the timer will not complete.
+
+Use `SET_TIME(T#100ms)` when you need to jump to an absolute point on the timeline. For multi-POU integration tests with scheduled tasks, use the deterministic harness (`trust-harness` / agent `harness.cycle` with `dt_ms`) instead.
 
 ## Project layout
 
@@ -69,6 +94,7 @@ Open `src/tests.st`.
 
 - `TEST_PROGRAM LimitAddAndScaling` tests pure function behavior.
 - `TEST_FUNCTION_BLOCK StartStopSequence` tests state transitions across scan cycles.
+- `TEST_FUNCTION_BLOCK TonTiming` tests a `TON` timer with explicit time advancement.
 - `TEST_PROGRAM ComparisonAssertions` demonstrates comparison assertions.
 
 ## Step 3: Run all tests
@@ -81,7 +107,7 @@ cargo run -p trust-runtime --bin trust-runtime -- test --project examples/tutori
 
 Expected summary:
 
-- `3 passed, 0 failed, 0 errors`
+- `4 passed, 0 failed, 0 errors`
 
 ## Step 4: List tests without running
 

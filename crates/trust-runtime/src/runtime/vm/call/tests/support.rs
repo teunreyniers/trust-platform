@@ -9,8 +9,8 @@ use crate::memory::{FrameId, MemoryLocation};
 use crate::program_model::{FunctionBlockDef, Param};
 use crate::stdlib::{time, StdParams};
 use crate::value::{
-    DateTimeValue, DateValue, LDateTimeValue, LTimeOfDayValue, RefPath, RefSegment, StructValue,
-    TimeOfDayValue, Value, ValueRef,
+    DateTimeValue, DateValue, Duration, LDateTimeValue, LTimeOfDayValue, RefPath, RefSegment,
+    StructValue, TimeOfDayValue, Value, ValueRef,
 };
 use crate::Runtime;
 use trust_hir::symbols::ParamDirection;

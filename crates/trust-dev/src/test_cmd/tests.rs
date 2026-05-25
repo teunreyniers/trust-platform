@@ -542,3 +542,112 @@ fn timeout_message_pluralization() {
     assert_eq!(timeout_message(1), "test timed out after 1 second");
     assert_eq!(timeout_message(5), "test timed out after 5 seconds");
 }
+
+#[test]
+fn execution_advances_simulation_time_for_ton_timer_test() {
+    let sources = vec![LoadedSource {
+        path: PathBuf::from("ton_timing.st"),
+        text: r#"
+PROGRAM Main
+END_PROGRAM
+
+TEST_FUNCTION_BLOCK TonPasses
+VAR
+    t : TON;
+END_VAR
+t(IN := TRUE, PT := T#5ms);
+ADVANCE_TIME(T#5ms);
+t(IN := TRUE, PT := T#5ms);
+ASSERT_TRUE(t.Q);
+END_TEST_FUNCTION_BLOCK
+"#
+        .to_string(),
+    }];
+    let tests = discover_tests(&sources);
+    assert_eq!(tests.len(), 1);
+
+    let session = CompileSession::from_sources(vec![HarnessSourceFile::with_path(
+        "ton_timing.st",
+        sources[0].text.clone(),
+    )]);
+    execute_test_case(&session, &tests[0], None).unwrap();
+}
+
+#[test]
+fn execution_ton_timer_fails_without_time_advancement() {
+    let sources = vec![LoadedSource {
+        path: PathBuf::from("ton_no_advance.st"),
+        text: r#"
+PROGRAM Main
+END_PROGRAM
+
+TEST_FUNCTION_BLOCK TonStalled
+VAR
+    t : TON;
+    count : INT := INT#0;
+END_VAR
+WHILE NOT t.Q AND count < INT#100 DO
+    t(IN := TRUE, PT := T#5ms);
+    count := count + INT#1;
+END_WHILE
+ASSERT_TRUE(t.Q);
+END_TEST_FUNCTION_BLOCK
+"#
+        .to_string(),
+    }];
+    let tests = discover_tests(&sources);
+    let session = CompileSession::from_sources(vec![HarnessSourceFile::with_path(
+        "ton_no_advance.st",
+        sources[0].text.clone(),
+    )]);
+    let err = execute_test_case(&session, &tests[0], None).unwrap_err();
+    assert!(matches!(err, RuntimeError::AssertionFailed(_)));
+}
+
+#[test]
+fn execution_set_time_jumps_simulation_clock() {
+    let sources = vec![LoadedSource {
+        path: PathBuf::from("set_time.st"),
+        text: r#"
+TEST_PROGRAM SetTimeCase
+VAR
+    stamp : TIME;
+END_VAR
+SET_TIME(T#123ms);
+stamp := TIME();
+ASSERT_EQUAL(T#123ms, stamp);
+END_TEST_PROGRAM
+"#
+        .to_string(),
+    }];
+    let tests = discover_tests(&sources);
+    let session = CompileSession::from_sources(vec![HarnessSourceFile::with_path(
+        "set_time.st",
+        sources[0].text.clone(),
+    )]);
+    execute_test_case(&session, &tests[0], None).unwrap();
+}
+
+#[test]
+fn execution_advance_time_updates_time_builtin() {
+    let sources = vec![LoadedSource {
+        path: PathBuf::from("advance_time.st"),
+        text: r#"
+TEST_PROGRAM AdvanceTimeCase
+VAR
+    stamp : TIME;
+END_VAR
+ADVANCE_TIME(T#50ms);
+stamp := TIME();
+ASSERT_EQUAL(T#50ms, stamp);
+END_TEST_PROGRAM
+"#
+        .to_string(),
+    }];
+    let tests = discover_tests(&sources);
+    let session = CompileSession::from_sources(vec![HarnessSourceFile::with_path(
+        "advance_time.st",
+        sources[0].text.clone(),
+    )]);
+    execute_test_case(&session, &tests[0], None).unwrap();
+}
