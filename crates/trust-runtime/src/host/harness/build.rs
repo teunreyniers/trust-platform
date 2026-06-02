@@ -15,7 +15,7 @@ use super::config::{
     attach_fb_instances_to_tasks, attach_programs_to_tasks, ensure_wildcards_resolved,
     register_access_bindings, register_program_instances,
 };
-use super::types::{CompileError, SourceFile};
+use super::types::{CompileError, DiagnosticSnippet, SourceFile};
 
 pub(super) fn build_runtime_from_source_files(
     sources: &[SourceFile],
@@ -24,19 +24,23 @@ pub(super) fn build_runtime_from_source_files(
 ) -> Result<Runtime, CompileError> {
     let mut parses = Vec::with_capacity(sources.len());
     let mut parse_errors = Vec::new();
+    let mut parse_snippets = Vec::new();
     for (idx, source) in sources.iter().enumerate() {
         let parse = parser::parse(&source.text);
         if !parse.ok() {
             for err in parse.errors() {
-                let location =
-                    error_location(source, idx, &err.range, label_errors);
+                let location = error_location(source, idx, &err.range, label_errors);
                 parse_errors.push(format!("{location}: {}", err.message));
+                parse_snippets.push(diagnostic_snippet(source, &err.range, None, &err.message));
             }
         }
         parses.push(parse);
     }
     if !parse_errors.is_empty() {
-        return Err(CompileError::new(parse_errors.join("\n")));
+        return Err(CompileError::with_snippets(
+            parse_errors.join("\n"),
+            parse_snippets,
+        ));
     }
 
     let mut project = Project::new();
@@ -51,6 +55,7 @@ pub(super) fn build_runtime_from_source_files(
     }
 
     let mut diagnostics_errors = Vec::new();
+    let mut diagnostics_snippets = Vec::new();
     for (idx, file_id) in file_ids.iter().enumerate() {
         let diagnostics = project.database().diagnostics(*file_id);
         for diag in diagnostics.iter().filter(|diag| diag.is_error()) {
@@ -60,10 +65,19 @@ pub(super) fn build_runtime_from_source_files(
                 diag.code.code(),
                 diag.message
             ));
+            diagnostics_snippets.push(diagnostic_snippet(
+                &sources[idx],
+                &diag.range,
+                Some(diag.code.code()),
+                &diag.message,
+            ));
         }
     }
     if !diagnostics_errors.is_empty() {
-        return Err(CompileError::new(diagnostics_errors.join("\n")));
+        return Err(CompileError::with_snippets(
+            diagnostics_errors.join("\n"),
+            diagnostics_snippets,
+        ));
     }
     let analyses = file_ids
         .iter()
@@ -603,6 +617,24 @@ fn error_location(
         format!("{}:{line}:{column}", source_label(source, idx))
     } else {
         format!("{line}:{column}")
+    }
+}
+
+/// Builds a structured diagnostic for rich console rendering from a source
+/// file and the offending byte range.
+fn diagnostic_snippet(
+    source: &SourceFile,
+    range: &text_size::TextRange,
+    code: Option<&str>,
+    message: &str,
+) -> DiagnosticSnippet {
+    DiagnosticSnippet {
+        message: message.to_string(),
+        code: code.map(str::to_string),
+        path: source.path.clone(),
+        source: source.text.clone(),
+        start: u32::from(range.start()) as usize,
+        end: u32::from(range.end()) as usize,
     }
 }
 

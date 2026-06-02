@@ -47,8 +47,11 @@ mod test;
 #[path = "trust-runtime/wizard.rs"]
 mod wizard;
 
+use std::io::IsTerminal;
+
 use clap::error::ErrorKind;
 use clap::Parser;
+use trust_runtime::harness::{render_diagnostics, CompileError};
 
 use cli::{Cli, Command};
 
@@ -61,6 +64,21 @@ fn main() -> anyhow::Result<()> {
         .find(|arg| !arg.starts_with('-'))
         .map(|arg| arg.as_str());
     if let Err(err) = run() {
+        // Compile errors carry structured diagnostics: render them as
+        // rustc-style annotated source snippets instead of a flat message.
+        if let Some(compile) = err.downcast_ref::<CompileError>() {
+            if !compile.snippets().is_empty() {
+                let rendered =
+                    render_diagnostics(compile.snippets(), std::io::stderr().is_terminal());
+                eprint!("{rendered}");
+                let exit_code = if ci_mode {
+                    ci::classify_error_with_command(&compile.to_string(), ci_command)
+                } else {
+                    1
+                };
+                std::process::exit(exit_code);
+            }
+        }
         let message = format_error_with_tip(&err);
         eprintln!("{}", style::error(format!("Error: {message}")));
         let exit_code = if ci_mode {
