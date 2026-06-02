@@ -26,7 +26,7 @@ impl Parser<'_, '_> {
         if self.at(TokenKind::Ident) {
             self.parse_name();
         } else {
-            self.error("expected property name");
+            self.error_expected("expected property name");
         }
 
         if self.at(TokenKind::Colon) {
@@ -73,7 +73,7 @@ impl Parser<'_, '_> {
         if self.at(TokenKind::Ident) {
             self.parse_name();
         } else {
-            self.error("expected action name");
+            self.error_expected("expected action name");
         }
 
         // Parse statements

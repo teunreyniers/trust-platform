@@ -56,7 +56,7 @@ impl Parser<'_, '_> {
         if self.at(TokenKind::Ident) {
             self.parse_name();
         } else {
-            self.error("expected class name");
+            self.error_expected("expected class name");
         }
 
         self.parse_using_directives();
@@ -121,7 +121,7 @@ impl Parser<'_, '_> {
         if self.at(TokenKind::Ident) {
             self.parse_name();
         } else {
-            self.error("expected interface name");
+            self.error_expected("expected interface name");
         }
 
         // Parse EXTENDS clause

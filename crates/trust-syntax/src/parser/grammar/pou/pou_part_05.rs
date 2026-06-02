@@ -49,7 +49,7 @@ impl Parser<'_, '_> {
                 self.parse_name();
             }
         } else {
-            self.error("expected method name");
+            self.error_expected("expected method name");
         }
 
         // Parse return type
@@ -120,7 +120,7 @@ impl Parser<'_, '_> {
         if self.at_name_token() {
             self.parse_name();
         } else {
-            self.error("expected method name");
+            self.error_expected("expected method name");
         }
 
         if self.at(TokenKind::Colon) {

@@ -23,7 +23,7 @@ impl Parser<'_, '_> {
         if self.at(TokenKind::Ident) {
             self.parse_name();
         } else {
-            self.error("expected program name");
+            self.error_expected("expected program name");
         }
 
         self.parse_using_directives();
@@ -72,7 +72,7 @@ impl Parser<'_, '_> {
         if self.at(TokenKind::Ident) {
             self.parse_name();
         } else {
-            self.error("expected function name");
+            self.error_expected("expected function name");
         }
 
         // Parse return type
@@ -128,7 +128,7 @@ impl Parser<'_, '_> {
         if self.at(TokenKind::Ident) {
             self.parse_name();
         } else {
-            self.error("expected function block name");
+            self.error_expected("expected function block name");
         }
 
         self.parse_using_directives();

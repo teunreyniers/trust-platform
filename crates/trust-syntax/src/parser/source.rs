@@ -34,6 +34,20 @@ impl<'t, 'src> Source<'t, 'src> {
         self.peek_token_n(0)
     }
 
+    /// Returns the end offset of the most recently consumed non-trivia token.
+    ///
+    /// This is the position where a missing token would belong, so it makes a
+    /// better anchor for "expected X" diagnostics than the current token, which
+    /// may be many lines away across intervening whitespace. Returns `None` if
+    /// nothing has been consumed yet.
+    pub fn prev_token_end(&self) -> Option<text_size::TextSize> {
+        self.tokens[..self.cursor]
+            .iter()
+            .rev()
+            .find(|token| !token.kind.is_trivia())
+            .map(|token| token.range.end())
+    }
+
     /// Peeks at the nth token ahead (0 = current), skipping trivia.
     pub fn peek_kind(&self) -> TokenKind {
         self.peek_kind_n(0)
