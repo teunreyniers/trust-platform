@@ -47,6 +47,8 @@ pub(in crate::runtime::vm::register_ir) enum Tier1CompiledInstr {
         symbol_idx: u32,
         args: Box<[RegisterId]>,
         dest: RegisterId,
+        /// Statement-start program counter, used to locate a failing assertion.
+        source_pc: u32,
     },
     LoadRef {
         dest: RegisterId,

@@ -20,4 +20,4 @@ mod watchdog_subsystem;
 pub use core::Runtime;
 pub use metadata::RuntimeMetadata;
 pub use trust_runtime_core::retain::{RestartMode, RetainPolicy};
-pub use types::RetainSnapshot;
+pub use types::{AssertionLocation, RetainSnapshot};

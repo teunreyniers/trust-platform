@@ -87,6 +87,8 @@ pub(super) enum RegisterInstr {
         symbol_idx: u32,
         args: Vec<RegisterId>,
         dest: RegisterId,
+        /// Statement-start program counter, used to locate a failing assertion.
+        source_pc: u32,
     },
     SizeOfType {
         type_idx: u32,
@@ -477,6 +479,11 @@ fn execute_register_program(
     shared_budget: Option<&mut usize>,
 ) -> Result<RegisterPouExecutionResult, RuntimeError> {
     ensure_global_call_depth(depth_offset, 1).map_err(VmTrap::into_runtime_error)?;
+    // Clear stale diagnostics when entering a top-level execution so a failing
+    // assertion always reflects this run (nested calls keep the parent's value).
+    if depth_offset == 0 {
+        runtime.last_assertion_location = None;
+    }
     let mut register_execution_buffers =
         RegisterExecutionBuffers::acquire(program.max_registers as usize);
     let (frames, registers, remaining_register_reads, native_call_stack) =

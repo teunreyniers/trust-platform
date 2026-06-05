@@ -118,6 +118,45 @@ END_TEST_PROGRAM
 }
 
 #[test]
+fn failing_assertion_reports_assert_line_not_program_line() {
+    // The failing ASSERT_TRUE is on line 5, while the TEST_PROGRAM declaration
+    // is on line 2. The reported location must point at the assertion.
+    let text = "\nTEST_PROGRAM LineCase\nASSERT_TRUE(TRUE);\nASSERT_FALSE(TRUE);\nASSERT_TRUE(TRUE);\nEND_TEST_PROGRAM\n";
+    let sources = vec![LoadedSource {
+        path: PathBuf::from("line_case.st"),
+        text: text.to_string(),
+    }];
+    let tests = discover_tests(&sources);
+    assert_eq!(tests.len(), 1);
+    assert_eq!(tests[0].line, 2, "test declaration is on line 2");
+
+    let session = CompileSession::from_sources(vec![HarnessSourceFile::with_path(
+        "line_case.st",
+        text.to_string(),
+    )])
+    .with_extra_program_instances(vec![tests[0].name.clone()]);
+    let mut runtime = session.build_runtime().expect("build runtime");
+    let bytecode = session.build_bytecode_bytes().expect("build bytecode");
+    runtime
+        .apply_bytecode_bytes(&bytecode, None)
+        .expect("apply bytecode");
+
+    let err = execute_test_case_in_runtime(&mut runtime, &tests[0], None).unwrap_err();
+    assert!(matches!(err, RuntimeError::AssertionFailed(_)));
+
+    let location = runtime
+        .last_assertion_location()
+        .expect("assertion location recorded");
+    assert_eq!(location.line, 4, "ASSERT_FALSE is on line 4");
+
+    // The output layer rewrites the case to point at the failing assertion.
+    let mut case = tests[0].clone();
+    apply_assertion_location(&mut case, &runtime, &sources);
+    assert_eq!(case.line, 4);
+    assert_eq!(case.source_line.as_deref(), Some("ASSERT_FALSE(TRUE);"));
+}
+
+#[test]
 fn execution_runs_test_function_block() {
     let sources = vec![LoadedSource {
         path: PathBuf::from("tests_fb.st"),

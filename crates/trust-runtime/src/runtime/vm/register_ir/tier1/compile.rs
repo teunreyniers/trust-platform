@@ -48,11 +48,13 @@ pub(in crate::runtime::vm::register_ir) fn compile_tier1_block(
                 symbol_idx,
                 args,
                 dest,
+                source_pc,
             } => Tier1CompiledInstr::CallNative {
                 kind: *kind,
                 symbol_idx: *symbol_idx,
                 args: args.clone().into_boxed_slice(),
                 dest: *dest,
+                source_pc: *source_pc,
             },
             RegisterInstr::LoadRef { dest, ref_idx } => Tier1CompiledInstr::LoadRef {
                 dest: *dest,

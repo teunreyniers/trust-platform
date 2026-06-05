@@ -99,6 +99,7 @@ pub(in crate::runtime::vm::register_ir) fn execute_tier1_compiled_block(
                 symbol_idx,
                 args,
                 dest,
+                source_pc,
             } => {
                 native_call_stack.clear();
                 for arg in args.iter() {
@@ -114,7 +115,7 @@ pub(in crate::runtime::vm::register_ir) fn execute_tier1_compiled_block(
                 let frame = frames
                     .current_mut()
                     .ok_or_else(|| VmTrap::CallStackUnderflow.into_runtime_error())?;
-                let result = execute_native_call(
+                let result = match execute_native_call(
                     runtime,
                     module,
                     frame,
@@ -124,8 +125,20 @@ pub(in crate::runtime::vm::register_ir) fn execute_tier1_compiled_block(
                     *kind,
                     *symbol_idx,
                     arg_count,
-                )
-                .map_err(VmTrap::into_runtime_error)?;
+                ) {
+                    Ok(value) => value,
+                    Err(trap) => {
+                        let err = trap.into_runtime_error();
+                        super::super::super::dispatch::record_assertion_location(
+                            runtime,
+                            module,
+                            program.pou_id,
+                            *source_pc,
+                            &err,
+                        );
+                        return Err(err);
+                    }
+                };
                 write_register(registers, *dest, result)?;
             }
             Tier1CompiledInstr::LoadRef { dest, ref_idx } => {

@@ -237,6 +237,15 @@ pub(super) fn execute_pou_stack_with_locals(
     let budget = shared_budget.unwrap_or(&mut local_budget);
     let mut instruction_count = 0usize;
 
+    // Clear stale diagnostics when entering a top-level execution so a failing
+    // assertion always reflects this run (nested calls keep the parent's value).
+    if depth_offset == 0 {
+        runtime.last_assertion_location = None;
+    }
+    // Statement-start program counter of the most recent statement, used to
+    // point a failing assertion at the exact `ASSERT_*` call site.
+    let mut last_stmt_pc: Option<u32> = None;
+
     loop {
         if frames.is_empty() {
             return Ok(VmPouStackResult {
@@ -274,13 +283,23 @@ pub(super) fn execute_pou_stack_with_locals(
             return Err(VmTrap::DeadlineExceeded.into_runtime_error());
         }
 
-        if let Some(location) = vm_statement_location(runtime, module, frame_pou_id, pc) {
-            let storage = &runtime.storage;
-            let current_time = runtime.current_time;
-            if let Some(debug) = runtime.debug.as_mut() {
-                let call_depth = depth_offset.saturating_add(frames.len().saturating_sub(1) as u32);
-                debug.refresh_snapshot_from_storage(storage, current_time);
-                debug.on_statement(Some(&location), call_depth);
+        if let Some(source) = module.debug_map.source_by_pc.get(&(frame_pou_id, pc as u32)) {
+            last_stmt_pc = Some(pc as u32);
+            if runtime.debug.is_some() {
+                if let Some(location) = runtime.resolve_vm_debug_location(
+                    source.file.as_str(),
+                    source.line,
+                    source.column,
+                ) {
+                    let storage = &runtime.storage;
+                    let current_time = runtime.current_time;
+                    if let Some(debug) = runtime.debug.as_mut() {
+                        let call_depth =
+                            depth_offset.saturating_add(frames.len().saturating_sub(1) as u32);
+                        debug.refresh_snapshot_from_storage(storage, current_time);
+                        debug.on_statement(Some(&location), call_depth);
+                    }
+                }
             }
         }
         instruction_count = instruction_count.saturating_add(1);
@@ -371,8 +390,17 @@ pub(super) fn execute_pou_stack_with_locals(
                     kind,
                     symbol_idx,
                     arg_count,
-                )
-                .map_err(VmTrap::into_runtime_error)?;
+                );
+                let result = match result {
+                    Ok(value) => value,
+                    Err(trap) => {
+                        let err = trap.into_runtime_error();
+                        if let Some(stmt_pc) = last_stmt_pc {
+                            record_assertion_location(runtime, module, frame_pou_id, stmt_pc, &err);
+                        }
+                        return Err(err);
+                    }
+                };
                 operand_stack
                     .push(result)
                     .map_err(VmTrap::into_runtime_error)?;
@@ -620,6 +648,31 @@ pub(super) fn execute_pou_stack_with_locals(
     }
 }
 
+/// Record the source location of a failing assertion so the ST test runner can
+/// point at the exact `ASSERT_*` call site rather than the enclosing POU.
+///
+/// `source_pc` must be the statement-start program counter (the offset carried
+/// in the bytecode debug map), not the program counter of the `CALL_NATIVE`
+/// instruction itself.
+pub(super) fn record_assertion_location(
+    runtime: &mut Runtime,
+    module: &VmModule,
+    pou_id: u32,
+    source_pc: u32,
+    err: &RuntimeError,
+) {
+    if !matches!(err, RuntimeError::AssertionFailed(_)) {
+        return;
+    }
+    if let Some(source) = module.debug_map.source_by_pc.get(&(pou_id, source_pc)) {
+        runtime.last_assertion_location = Some(super::super::types::AssertionLocation {
+            file: source.file.clone(),
+            line: source.line,
+            column: source.column,
+        });
+    }
+}
+
 fn build_stack_result(frame: super::frames::VmFrame, capture_return: bool) -> VmPouStackResult {
     let return_value = if capture_return {
         frame.locals.first().cloned()
@@ -649,16 +702,6 @@ fn deadline_exceeded(deadline: Option<Instant>) -> bool {
 
 fn should_check_stack_deadline(instruction_count: usize) -> bool {
     instruction_count == 0 || instruction_count.is_multiple_of(STACK_DEADLINE_CHECK_STRIDE)
-}
-
-fn vm_statement_location(
-    runtime: &Runtime,
-    module: &VmModule,
-    pou_id: u32,
-    pc: usize,
-) -> Option<crate::debug::SourceLocation> {
-    let source = module.debug_map.source_by_pc.get(&(pou_id, pc as u32))?;
-    runtime.resolve_vm_debug_location(source.file.as_str(), source.line, source.column)
 }
 
 fn decode_partial_access(operand: u32) -> Result<PartialAccess, RuntimeError> {
