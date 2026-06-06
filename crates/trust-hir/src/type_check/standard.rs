@@ -11,6 +11,7 @@ mod selection;
 mod string;
 mod test_time;
 mod time;
+mod validate;
 
 pub(in crate::type_check) use helpers::is_execution_param;
 
@@ -82,6 +83,8 @@ impl<'a, 'b> StandardChecker<'a, 'b> {
                     self.infer_split_date_time_call(node, &upper)
                 }
                 "DAY_OF_WEEK" => self.infer_day_of_week_call(node),
+                "IS_VALID" => self.infer_is_valid_call(node),
+                "IS_VALID_BCD" => self.infer_is_valid_bcd_call(node),
                 _ => return None,
             };
 
