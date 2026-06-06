@@ -296,6 +296,30 @@ impl<'t, 'src> Parser<'t, 'src> {
         });
     }
 
+    /// Reports an error for a token that is missing at the current position.
+    ///
+    /// Unlike [`Self::error`], which anchors at the (possibly far-away) current
+    /// token, this anchors a zero-width range at the end of the previously
+    /// consumed token — the spot where the missing token belongs. This keeps
+    /// "expected X" diagnostics on the right line instead of jumping ahead to
+    /// the next token across intervening blank lines. Falls back to the current
+    /// token when nothing has been consumed yet.
+    pub(crate) fn error_expected(&mut self, message: &str) {
+        let range = match self.source.prev_token_end() {
+            Some(end) => text_size::TextRange::empty(end),
+            None => self
+                .source
+                .current_token()
+                .map(|t| t.range)
+                .unwrap_or_else(|| text_size::TextRange::empty(text_size::TextSize::from(0))),
+        };
+
+        self.errors.push(ParseError {
+            message: message.to_string(),
+            range,
+        });
+    }
+
     /// Skip tokens until we find a synchronization point for error recovery.
     /// This helps the parser continue after encountering an error.
     #[allow(dead_code)]

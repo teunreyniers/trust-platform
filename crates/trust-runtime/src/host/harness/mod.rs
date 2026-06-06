@@ -32,7 +32,7 @@ pub use protocol::{
     HarnessLoadSummary, HarnessRunUntilSummary, HarnessStateSummary, HarnessValueSnapshot,
     HarnessWatchSnapshot,
 };
-pub use types::{CompileError, CycleResult, SourceFile};
+pub use types::{render_diagnostics, CompileError, CycleResult, DiagnosticSnippet, SourceFile};
 
 use compiler::{
     class_type_name, function_block_type_name, interface_type_name, lower_classes,

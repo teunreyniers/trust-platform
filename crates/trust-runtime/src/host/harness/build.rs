@@ -15,7 +15,7 @@ use super::config::{
     attach_fb_instances_to_tasks, attach_programs_to_tasks, ensure_wildcards_resolved,
     register_access_bindings, register_program_instances,
 };
-use super::types::{CompileError, SourceFile};
+use super::types::{CompileError, DiagnosticSnippet, SourceFile};
 
 pub(super) fn build_runtime_from_source_files(
     sources: &[SourceFile],
@@ -24,21 +24,23 @@ pub(super) fn build_runtime_from_source_files(
 ) -> Result<Runtime, CompileError> {
     let mut parses = Vec::with_capacity(sources.len());
     let mut parse_errors = Vec::new();
+    let mut parse_snippets = Vec::new();
     for (idx, source) in sources.iter().enumerate() {
         let parse = parser::parse(&source.text);
         if !parse.ok() {
             for err in parse.errors() {
-                if label_errors {
-                    parse_errors.push(format!("{}: {err}", source_label(source, idx)));
-                } else {
-                    parse_errors.push(err.to_string());
-                }
+                let location = error_location(source, idx, &err.range, label_errors);
+                parse_errors.push(format!("{location}: {}", err.message));
+                parse_snippets.push(diagnostic_snippet(source, &err.range, None, &err.message));
             }
         }
         parses.push(parse);
     }
     if !parse_errors.is_empty() {
-        return Err(CompileError::new(parse_errors.join("\n")));
+        return Err(CompileError::with_snippets(
+            parse_errors.join("\n"),
+            parse_snippets,
+        ));
     }
 
     let mut project = Project::new();
@@ -53,18 +55,29 @@ pub(super) fn build_runtime_from_source_files(
     }
 
     let mut diagnostics_errors = Vec::new();
+    let mut diagnostics_snippets = Vec::new();
     for (idx, file_id) in file_ids.iter().enumerate() {
         let diagnostics = project.database().diagnostics(*file_id);
         for diag in diagnostics.iter().filter(|diag| diag.is_error()) {
-            if label_errors {
-                diagnostics_errors.push(format!("{}: {diag}", source_label(&sources[idx], idx)));
-            } else {
-                diagnostics_errors.push(diag.to_string());
-            }
+            let location = error_location(&sources[idx], idx, &diag.range, label_errors);
+            diagnostics_errors.push(format!(
+                "{location}: error[{}]: {}",
+                diag.code.code(),
+                diag.message
+            ));
+            diagnostics_snippets.push(diagnostic_snippet(
+                &sources[idx],
+                &diag.range,
+                Some(diag.code.code()),
+                &diag.message,
+            ));
         }
     }
     if !diagnostics_errors.is_empty() {
-        return Err(CompileError::new(diagnostics_errors.join("\n")));
+        return Err(CompileError::with_snippets(
+            diagnostics_errors.join("\n"),
+            diagnostics_snippets,
+        ));
     }
     let analyses = file_ids
         .iter()
@@ -589,4 +602,58 @@ fn source_label(source: &SourceFile, idx: usize) -> String {
         .as_deref()
         .map(|path| path.to_string())
         .unwrap_or_else(|| format!("file {idx}"))
+}
+
+/// Formats the location of a compile error as `path:line:column` (1-based) so
+/// that editors recognize it and can jump straight to the offending position.
+fn error_location(
+    source: &SourceFile,
+    idx: usize,
+    range: &text_size::TextRange,
+    label_errors: bool,
+) -> String {
+    let (line, column) = line_column(&source.text, u32::from(range.start()));
+    if label_errors {
+        format!("{}:{line}:{column}", source_label(source, idx))
+    } else {
+        format!("{line}:{column}")
+    }
+}
+
+/// Builds a structured diagnostic for rich console rendering from a source
+/// file and the offending byte range.
+fn diagnostic_snippet(
+    source: &SourceFile,
+    range: &text_size::TextRange,
+    code: Option<&str>,
+    message: &str,
+) -> DiagnosticSnippet {
+    DiagnosticSnippet {
+        message: message.to_string(),
+        code: code.map(str::to_string),
+        path: source.path.clone(),
+        source: source.text.clone(),
+        start: u32::from(range.start()) as usize,
+        end: u32::from(range.end()) as usize,
+    }
+}
+
+/// Converts a byte offset into 1-based `(line, column)`, counting columns in
+/// characters. Mirrors the GCC/Clang/rustc convention editors expect.
+fn line_column(text: &str, offset: u32) -> (u32, u32) {
+    let offset = offset as usize;
+    let mut line = 1u32;
+    let mut column = 1u32;
+    for (i, c) in text.char_indices() {
+        if i >= offset {
+            break;
+        }
+        if c == '\n' {
+            line += 1;
+            column = 1;
+        } else {
+            column += 1;
+        }
+    }
+    (line, column)
 }

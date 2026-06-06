@@ -83,6 +83,7 @@ crossterm = "0.29"
 dialoguer = "0.12"
 indicatif = "0.18"
 owo-colors = "4"
+annotate-snippets = "0.11"
 rumqttc = { version = "0.25", default-features = false, features = ["use-native-tls"] }
 native-tls = { version = "0.2.18", features = ["alpn", "vendored"] }
 time = "0.3.47"
