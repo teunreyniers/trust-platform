@@ -326,7 +326,14 @@ fn init_var_defaults(
         .map_err(|err| init_failed(owner, &var.name, err))?;
         storage.set_instance_var(instance_id, var.name.clone(), value);
     }
-    for var in vars {
+    // Evaluate constant initializers before the rest so that variable
+    // initializers (and constants that build on earlier constants) can read the
+    // already-initialized constant values from storage.
+    let init_order = vars
+        .iter()
+        .filter(|var| var.constant)
+        .chain(vars.iter().filter(|var| !var.constant));
+    for var in init_order {
         if function_block_type_name(var.type_id, registry).is_some() {
             if let Some(expr) = &var.initializer {
                 let Some(Value::Instance(nested_id)) = storage
