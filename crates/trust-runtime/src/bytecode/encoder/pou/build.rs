@@ -104,11 +104,16 @@ impl<'a> BytecodeEncoder<'a> {
                 local_ref_start,
                 local_ref_count,
                 for_temp_pairs,
-            } = self.local_scope_for_body(Some(&func.name), &func.params, &func.locals, &func.body)?;
+            } = self.local_scope_for_body(
+                func.return_type.as_ref().map(|_| &func.name),
+                &func.params,
+                &func.locals,
+                &func.body,
+            )?;
             let static_refs = self.static_refs_for_function(func)?;
             let mut ctx = CodegenContext::new(
                 None,
-                Some(func.name.clone()),
+                func.return_type.as_ref().map(|_| func.name.clone()),
                 func.using.clone(),
                 locals,
                 static_refs,

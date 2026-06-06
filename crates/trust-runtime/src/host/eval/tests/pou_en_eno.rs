@@ -20,7 +20,7 @@ fn en_eno_semantics() {
 
     let func = FunctionDef {
         name: "DoWork".into(),
-        return_type: TypeId::INT,
+        return_type: Some(TypeId::INT),
         params: vec![
             Param {
                 name: "EN".into(),

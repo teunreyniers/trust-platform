@@ -18,7 +18,9 @@ impl<'a> BytecodeEncoder<'a> {
             self.collect_var_types(&program.temps)?;
         }
         for func in self.runtime.functions().values() {
-            self.type_index(func.return_type)?;
+            if let Some(rt) = func.return_type {
+                self.type_index(rt)?;
+            }
             self.collect_param_types(&func.params)?;
             self.collect_var_types(&func.locals)?;
             self.collect_var_types(&func.static_locals)?;

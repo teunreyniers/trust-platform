@@ -214,7 +214,7 @@ enum VmPouInitPlan {
         params: Vec<Param>,
         locals: Vec<VarDef>,
         static_locals: Vec<VarDef>,
-        return_slot: (SmolStr, TypeId),
+        return_slot: Option<(SmolStr, TypeId)>,
     },
     FunctionBlock {
         frame_owner: SmolStr,
@@ -253,7 +253,9 @@ impl VmPouInitPlan {
 
     fn return_slot(&self) -> Option<(&SmolStr, TypeId)> {
         match self {
-            Self::Function { return_slot, .. } => Some((&return_slot.0, return_slot.1)),
+            Self::Function { return_slot, .. } => {
+                return_slot.as_ref().map(|(name, ty)| (name, *ty))
+            }
             Self::Method { return_slot, .. } => return_slot.as_ref().map(|(name, ty)| (name, *ty)),
             Self::Program { .. } | Self::FunctionBlock { .. } => None,
         }
@@ -382,7 +384,9 @@ fn build_init_plan_for_pou(
             params: function.params.clone(),
             locals: function.locals.clone(),
             static_locals: function.static_locals.clone(),
-            return_slot: (function.name.clone(), function.return_type),
+            return_slot: function
+                .return_type
+                .map(|ty| (function.name.clone(), ty)),
         });
     }
     if module.function_block_ids.get(&key).copied() == Some(pou_id) {
@@ -479,7 +483,7 @@ mod tests {
             params: Vec::new(),
             locals: Vec::new(),
             static_locals: Vec::new(),
-            return_slot: ("ReturnSvc".into(), interface),
+            return_slot: Some(("ReturnSvc".into(), interface)),
         };
         let mut frame = frame_with_slots(1);
 
