@@ -37,6 +37,7 @@ impl Runtime {
             faults: FaultSubsystem::new(),
             execution_deadline: None,
             output_commit_deadline: None,
+            last_assertion_location: None,
             vm_local_init_plan_cache: super::vm::VmLocalInitPlanCacheState::default(),
             vm_register_lowering_cache: super::vm::RegisterLoweringCacheState::from_env(),
             vm_register_profile: super::vm::RegisterProfileState::default(),
@@ -51,6 +52,16 @@ impl Runtime {
     #[must_use]
     pub fn profile(&self) -> DateTimeProfile {
         self.profile
+    }
+
+    /// Source location of the most recently failed assertion, if any.
+    ///
+    /// Set by the bytecode interpreter when an `ASSERT_*` standard function
+    /// reports [`crate::error::RuntimeError::AssertionFailed`], and cleared at
+    /// the start of each top-level POU execution.
+    #[must_use]
+    pub fn last_assertion_location(&self) -> Option<&super::types::AssertionLocation> {
+        self.last_assertion_location.as_ref()
     }
 
     /// Enable debugging and return a shared control handle.

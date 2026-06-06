@@ -127,4 +127,6 @@ pub mod world;
 mod runtime;
 
 pub(crate) use runtime::types::GlobalInitValue;
-pub use runtime::{RestartMode, RetainPolicy, RetainSnapshot, Runtime, RuntimeMetadata};
+pub use runtime::{
+    AssertionLocation, RestartMode, RetainPolicy, RetainSnapshot, Runtime, RuntimeMetadata,
+};

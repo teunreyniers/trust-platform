@@ -79,12 +79,16 @@ pub fn run_test(
                 message: None,
                 duration_ms: elapsed_ms(case_started.elapsed()),
             },
-            Err(RuntimeError::AssertionFailed(message)) => ExecutedTest {
-                case: case.clone(),
-                outcome: TestOutcome::Failed,
-                message: Some(message.to_string()),
-                duration_ms: elapsed_ms(case_started.elapsed()),
-            },
+            Err(RuntimeError::AssertionFailed(message)) => {
+                let mut case = case.clone();
+                apply_assertion_location(&mut case, &runtime, &sources);
+                ExecutedTest {
+                    case,
+                    outcome: TestOutcome::Failed,
+                    message: Some(message.to_string()),
+                    duration_ms: elapsed_ms(case_started.elapsed()),
+                }
+            }
             Err(RuntimeError::ExecutionTimeout) => ExecutedTest {
                 case: case.clone(),
                 outcome: TestOutcome::Error,

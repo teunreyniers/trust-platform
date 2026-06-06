@@ -136,3 +136,46 @@ fn source_line_for_offset(text: &str, byte_offset: usize) -> Option<String> {
     }
 }
 
+/// Rewrite a discovered test's reported location to point at the assertion that
+/// actually failed, using the location captured by the runtime during
+/// execution. Falls back to the test's declaration location when no assertion
+/// location is available (e.g. the failure carried no debug info).
+fn apply_assertion_location(case: &mut DiscoveredTest, runtime: &Runtime, sources: &[LoadedSource]) {
+    let Some(location) = runtime.last_assertion_location() else {
+        return;
+    };
+    case.line = location.line as usize;
+
+    // Prefer the source file the assertion lives in (it may differ from the test
+    // declaration file when the assertion is reached through a helper), falling
+    // back to the test's own file when the debug label can't be matched.
+    let source = sources
+        .iter()
+        .find(|source| source_path_matches(&source.path, location.file.as_str()))
+        .inspect(|source| case.file = source.path.clone())
+        .or_else(|| sources.iter().find(|source| source.path == case.file));
+
+    case.source_line = source.and_then(|source| nth_line(&source.text, location.line));
+}
+
+fn source_path_matches(loaded: &Path, debug_label: &str) -> bool {
+    let debug = Path::new(debug_label);
+    if loaded == debug {
+        return true;
+    }
+    match (std::fs::canonicalize(loaded), std::fs::canonicalize(debug)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
+}
+
+fn nth_line(text: &str, line_1based: u32) -> Option<String> {
+    let index = (line_1based as usize).checked_sub(1)?;
+    let line = text.lines().nth(index)?.trim();
+    if line.is_empty() {
+        None
+    } else {
+        Some(line.to_string())
+    }
+}
+

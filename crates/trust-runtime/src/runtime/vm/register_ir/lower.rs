@@ -108,6 +108,10 @@ pub(super) fn lower_pou_to_register_ir(
     let max_entry_stack_depth = entry_stack_depths.values().copied().max().unwrap_or(0);
     let mut next_register = max_entry_stack_depth;
     let mut blocks = Vec::with_capacity(leaders.len());
+    // Tracks the statement-start program counter of the statement currently being
+    // lowered. Leaders are sorted, so instructions are visited in ascending pc
+    // order and this stays in sync as we pass each debug-map statement boundary.
+    let mut current_stmt_pc = pou.code_start as u32;
     for (idx, start_pc) in leaders.iter().copied().enumerate() {
         let end_pc = leaders.get(idx + 1).copied().unwrap_or(pou.code_end);
         let entry_stack_depth = entry_stack_depths.get(&start_pc).copied().unwrap_or(0);
@@ -121,6 +125,13 @@ pub(super) fn lower_pou_to_register_ir(
             .iter()
             .filter(|instr| (start_pc..end_pc).contains(&instr.pc))
         {
+            if module
+                .debug_map
+                .source_by_pc
+                .contains_key(&(pou_id, instr.pc as u32))
+            {
+                current_stmt_pc = instr.pc as u32;
+            }
             if opaque_mode {
                 instructions.push(RegisterInstr::VmFallback {
                     opcode: instr.opcode,
@@ -183,6 +194,7 @@ pub(super) fn lower_pou_to_register_ir(
                         symbol_idx,
                         args,
                         dest,
+                        source_pc: current_stmt_pc,
                     });
                 }
                 0x10 => {
