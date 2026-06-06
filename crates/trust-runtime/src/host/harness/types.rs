@@ -3,6 +3,7 @@
 #![allow(missing_docs)]
 
 use annotate_snippets::{Level, Renderer, Snippet};
+use trust_syntax::lexer::Lexer;
 
 use crate::error::RuntimeError;
 use crate::value::Duration;
@@ -104,11 +105,12 @@ pub fn render_diagnostics(snippets: &[DiagnosticSnippet], color: bool) -> String
 
     let mut out = String::new();
     for snippet in snippets {
-        // Clamp the span to the buffer; the renderer allows up to one past the
-        // last byte and panics beyond that.
-        let max = snippet.source.len() + 1;
-        let end = snippet.end.min(max);
+        // Clamp the span to the buffer, then tighten it to the offending text so
+        // the carets don't underline surrounding trivia (diagnostic ranges often
+        // include trailing whitespace, blank lines, or comments).
+        let end = snippet.end.min(snippet.source.len());
         let start = snippet.start.min(end);
+        let (start, end) = tighten_span(&snippet.source, start, end);
 
         let mut source = Snippet::source(&snippet.source).line_start(1).fold(true);
         if let Some(path) = &snippet.path {
@@ -126,6 +128,32 @@ pub fn render_diagnostics(snippets: &[DiagnosticSnippet], color: bool) -> String
         out.push('\n');
     }
     out
+}
+
+/// Shrinks a byte span to its first and last non-trivia tokens, dropping
+/// surrounding whitespace, comments, and pragmas. Returns the span unchanged
+/// when it is empty or contains only trivia.
+fn tighten_span(source: &str, start: usize, end: usize) -> (usize, usize) {
+    if start >= end {
+        return (start, end);
+    }
+
+    let mut first = None;
+    let mut last = None;
+    for token in Lexer::new(&source[start..end]) {
+        if token.kind.is_trivia() {
+            continue;
+        }
+        let token_start = usize::from(token.range.start());
+        let token_end = usize::from(token.range.end());
+        first.get_or_insert(token_start);
+        last = Some(token_end);
+    }
+
+    match (first, last) {
+        (Some(first), Some(last)) => (start + first, start + last),
+        _ => (start, end),
+    }
 }
 
 /// Result of a single execution cycle.
