@@ -5,6 +5,12 @@ fn lower_program_var_blocks(
     let mut globals = Vec::new();
     let mut vars = Vec::new();
     let mut temps = Vec::new();
+    register_pou_compile_time_constants(program, ctx, |kind| {
+        matches!(
+            kind,
+            VarBlockKind::Var | VarBlockKind::Stat | VarBlockKind::Global | VarBlockKind::Temp
+        )
+    })?;
     for var_block in program
         .children()
         .filter(|child| child.kind() == SyntaxKind::VarBlock)
@@ -26,23 +32,6 @@ fn lower_program_var_blocks(
                     })
                 })
                 .transpose()?;
-            if qualifiers.constant
-                && matches!(
-                    kind,
-                    VarBlockKind::Var | VarBlockKind::Stat | VarBlockKind::Global | VarBlockKind::Temp
-                )
-            {
-                if let Some(expr) = init_expr.as_ref() {
-                    let value = ctx.eval_compile_time_const_initializer(expr, type_id)?;
-                    for name in &parts.names {
-                        ctx.register_compile_time_const(name.as_str(), value.clone());
-                        if matches!(kind, VarBlockKind::Global) {
-                            let qualified = namespace_qualified_name(&var_block, name.as_str());
-                            ctx.register_compile_time_const(qualified.as_str(), value.clone());
-                        }
-                    }
-                }
-            }
             let address_info = parts
                 .address
                 .as_ref()

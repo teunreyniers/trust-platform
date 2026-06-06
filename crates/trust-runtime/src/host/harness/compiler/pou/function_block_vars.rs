@@ -7,6 +7,12 @@ fn lower_function_block_var_blocks(
     let mut params = Vec::new();
     let mut vars = Vec::new();
     let mut temps = Vec::new();
+    register_pou_compile_time_constants(node, ctx, |kind| {
+        matches!(
+            kind,
+            VarBlockKind::Var | VarBlockKind::Stat | VarBlockKind::Temp
+        )
+    })?;
     for var_block in node
         .children()
         .filter(|child| child.kind() == SyntaxKind::VarBlock)
@@ -28,16 +34,6 @@ fn lower_function_block_var_blocks(
                     })
                 })
                 .transpose()?;
-            if qualifiers.constant
-                && matches!(kind, VarBlockKind::Var | VarBlockKind::Stat | VarBlockKind::Temp)
-            {
-                if let Some(expr) = init_expr.as_ref() {
-                    let value = ctx.eval_compile_time_const_initializer(expr, type_id)?;
-                    for name in &parts.names {
-                        ctx.register_compile_time_const(name.as_str(), value.clone());
-                    }
-                }
-            }
             let address_info = parts
                 .address
                 .as_ref()
