@@ -504,3 +504,100 @@
             "fixing invalid call should reduce diagnostics"
         );
     }
+
+    #[test]
+    fn analyze_salsa_accepts_typeless_function_with_outputs() {
+        let mut db = Database::new();
+        let file = FileId(60);
+        db.set_source_text(
+            file,
+            concat!(
+                "FUNCTION foo\n",
+                "VAR_INPUT raw: INT; END_VAR\n",
+                "VAR_OUTPUT position: REAL; END_VAR\n",
+                "position := INT_TO_REAL(raw);\n",
+                "END_FUNCTION\n",
+            )
+            .to_string(),
+        );
+
+        let analysis = db.analyze_salsa(file);
+
+        assert!(
+            analysis
+                .diagnostics
+                .iter()
+                .all(|diagnostic| !diagnostic.is_error()),
+            "typeless function with outputs should not emit E206 or other errors: {:?}",
+            analysis.diagnostics
+        );
+    }
+
+    #[test]
+    fn analyze_salsa_typeless_function_return_value_emits_e207() {
+        let mut db = Database::new();
+        let file = FileId(61);
+        db.set_source_text(
+            file,
+            concat!(
+                "FUNCTION foo\n",
+                "VAR_INPUT raw: INT; END_VAR\n",
+                "RETURN raw;\n",
+                "END_FUNCTION\n",
+            )
+            .to_string(),
+        );
+
+        let analysis = db.analyze_salsa(file);
+
+        assert!(
+            analysis
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.is_error() && diagnostic.code.code() == "E207"),
+            "returning a value from a typeless function should emit E207: {:?}",
+            analysis.diagnostics
+        );
+    }
+
+    #[test]
+    fn analyze_salsa_typeless_function_result_used_emits_type_mismatch() {
+        let mut db = Database::new();
+        let file_lib = FileId(62);
+        let file_main = FileId(63);
+        db.set_source_text(
+            file_lib,
+            concat!(
+                "FUNCTION foo\n",
+                "VAR_INPUT raw: INT; END_VAR\n",
+                "VAR_OUTPUT position: REAL; END_VAR\n",
+                "position := INT_TO_REAL(raw);\n",
+                "END_FUNCTION\n",
+            )
+            .to_string(),
+        );
+        db.set_source_text(
+            file_main,
+            concat!(
+                "PROGRAM Main\n",
+                "VAR position: REAL; END_VAR\n",
+                "position := foo(raw := 0);\n",
+                "END_PROGRAM\n",
+            )
+            .to_string(),
+        );
+
+        let analysis = db.analyze_salsa(file_main);
+
+        assert!(
+            analysis.diagnostics.iter().any(|diagnostic| {
+                diagnostic.is_error()
+                    && matches!(
+                        diagnostic.code,
+                        DiagnosticCode::TypeMismatch | DiagnosticCode::IncompatibleAssignment
+                    )
+            }),
+            "using a typeless function result in an expression should emit a type-mismatch error: {:?}",
+            analysis.diagnostics
+        );
+    }

@@ -31,12 +31,19 @@ pub(crate) fn call_function<'a>(
         }
     };
 
-    let return_default = default_value_for_type_id(func.return_type, ctx.registry, &ctx.profile)
-        .map_err(|err| init_failed_debug(&func.name, &func.name, err))?;
+    let return_default = func
+        .return_type
+        .map(|return_type| {
+            default_value_for_type_id(return_type, ctx.registry, &ctx.profile)
+                .map_err(|err| init_failed_debug(&func.name, &func.name, err))
+        })
+        .transpose()?;
     ctx.using = Some(&func.using);
     ctx.storage.push_frame(func.name.clone());
-    ctx.return_name = Some(func.name.clone());
-    ctx.storage.set_local(func.name.clone(), return_default);
+    ctx.return_name = func.return_type.as_ref().map(|_| func.name.clone());
+    if let Some(return_default) = return_default {
+        ctx.storage.set_local(func.name.clone(), return_default);
+    }
     for (name, value) in param_values {
         ctx.storage.set_local(name, value);
     }
@@ -47,8 +54,13 @@ pub(crate) fn call_function<'a>(
         ctx.return_name = saved_return;
         ctx.using = saved_using;
         write_output_values(ctx, output_values)?;
-        return default_value_for_type_id(func.return_type, ctx.registry, &ctx.profile)
-            .map_err(|err| init_failed_debug(&func.name, &func.name, err));
+        return match func.return_type {
+            Some(return_type) => {
+                default_value_for_type_id(return_type, ctx.registry, &ctx.profile)
+                    .map_err(|err| init_failed_debug(&func.name, &func.name, err))
+            }
+            None => Ok(Value::Null),
+        };
     }
 
     let saved_call_depth = ctx.call_depth;
@@ -79,19 +91,23 @@ pub(crate) fn call_function<'a>(
         }
     };
 
-    let return_value = match result {
-        stmt::StmtResult::Return(Some(value)) => value,
-        _ => ctx
-            .storage
-            .current_frame()
-            .and_then(|frame| frame.return_value.clone())
-            .map_or_else(
-                || {
-                    default_value_for_type_id(func.return_type, ctx.registry, &ctx.profile)
-                        .map_err(|err| init_failed_debug(&func.name, &func.name, err))
-                },
-                Ok,
-            )?,
+    let return_value = if let Some(return_type) = func.return_type {
+        match result {
+            stmt::StmtResult::Return(Some(value)) => value,
+            _ => ctx
+                .storage
+                .current_frame()
+                .and_then(|frame| frame.return_value.clone())
+                .map_or_else(
+                    || {
+                        default_value_for_type_id(return_type, ctx.registry, &ctx.profile)
+                            .map_err(|err| init_failed_debug(&func.name, &func.name, err))
+                    },
+                    Ok,
+                )?,
+        }
+    } else {
+        Value::Null
     };
 
     let output_values = match collect_outputs(ctx, &out_targets) {

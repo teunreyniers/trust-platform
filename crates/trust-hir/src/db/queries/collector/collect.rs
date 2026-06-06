@@ -71,7 +71,7 @@ impl SymbolCollector<'_> {
             SyntaxKind::Function => {
                 let return_type = self
                     .return_type_from_node(node)
-                    .unwrap_or(LEGACY_UNKNOWN_TYPE_ID);
+                    .unwrap_or(TypeId::VOID);
                 self.collect_pou(
                     node,
                     SymbolKind::Function {

@@ -33,7 +33,7 @@ pub struct VarDef {
 #[derive(Debug, Clone)]
 pub struct FunctionDef {
     pub name: SmolStr,
-    pub return_type: TypeId,
+    pub return_type: Option<TypeId>,
     pub params: Vec<Param>,
     pub locals: Vec<VarDef>,
     pub static_locals: Vec<VarDef>,

@@ -20,7 +20,7 @@ fn param_binding() {
 
     let func = FunctionDef {
         name: "F".into(),
-        return_type: TypeId::INT,
+        return_type: Some(TypeId::INT),
         params: vec![
             Param {
                 name: "a".into(),

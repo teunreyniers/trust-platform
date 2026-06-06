@@ -174,8 +174,8 @@ fn lower_function_node(
     let return_type = node
         .children()
         .find(|child| child.kind() == SyntaxKind::TypeRef)
-        .ok_or_else(|| CompileError::new("missing function return type"))?;
-    let return_type = lower_type_ref(&return_type, ctx)?;
+        .map(|type_ref| lower_type_ref(&type_ref, ctx))
+        .transpose()?;
 
     let (params, locals, static_locals) = lower_function_var_blocks(node, ctx)?;
     let body = lower_stmt_list(node, ctx)?;

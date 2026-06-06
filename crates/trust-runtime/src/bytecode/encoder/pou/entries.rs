@@ -26,7 +26,10 @@ impl<'a> BytecodeEncoder<'a> {
         id: u32,
     ) -> Result<PouEntry, BytecodeError> {
         let name_idx = self.strings.intern(func.name.clone());
-        let return_type_id = Some(self.type_index(func.return_type)?);
+        let return_type_id = func
+            .return_type
+            .map(|rt| self.type_index(rt))
+            .transpose()?;
         let params = self.encode_params(&func.params)?;
         Ok(PouEntry {
             id,

@@ -5,8 +5,8 @@ use trust_hir::types::TypeRegistry;
 use trust_hir::{Type, TypeId};
 use trust_runtime::error::RuntimeError;
 use trust_runtime::eval::{
-    call_function, expr::Expr, ops::BinaryOp, stmt::Stmt, ArgValue, CallArg, FunctionDef, Param,
-    VarDef,
+    call_function, expr::Expr, expr::LValue, ops::BinaryOp, stmt::Stmt, ArgValue, CallArg,
+    FunctionDef, Param, VarDef,
 };
 use trust_runtime::memory::VariableStorage;
 use trust_runtime::stdlib::StandardLibrary;
@@ -23,7 +23,7 @@ fn call_function_exec() {
 
     let func = FunctionDef {
         name: "AddOne".into(),
-        return_type: TypeId::INT,
+        return_type: Some(TypeId::INT),
         params: vec![Param {
             name: "x".into(),
             type_id: TypeId::INT,
@@ -70,7 +70,7 @@ fn function_input_default_failure_returns_init_failed() {
 
     let func = FunctionDef {
         name: "NeedsSvc".into(),
-        return_type: TypeId::INT,
+        return_type: Some(TypeId::INT),
         params: vec![
             Param {
                 name: "Seed".into(),
@@ -122,7 +122,7 @@ fn function_return_default_failure_returns_init_failed() {
 
     let func = FunctionDef {
         name: "ReturnSvc".into(),
-        return_type: interface,
+        return_type: Some(interface),
         params: Vec::new(),
         locals: Vec::new(),
         static_locals: Vec::new(),
@@ -152,7 +152,7 @@ fn function_local_default_failure_returns_init_failed() {
 
     let func = FunctionDef {
         name: "LocalSvc".into(),
-        return_type: TypeId::INT,
+        return_type: Some(TypeId::INT),
         params: Vec::new(),
         locals: vec![VarDef {
             name: "Svc".into(),
@@ -175,6 +175,64 @@ fn function_local_default_failure_returns_init_failed() {
     let err = call_function(&mut ctx, &func, &[])
         .expect_err("unsupported local default must fail closed");
     assert_init_failed(err, "LocalSvc", "Svc");
+}
+
+#[test]
+fn call_typeless_function_writes_outputs() {
+    let registry = TypeRegistry::new();
+    let mut storage = VariableStorage::new();
+    storage.set_global("result", Value::Int(0));
+    let stdlib = StandardLibrary::new();
+    let mut ctx = common::make_context(&mut storage, &registry);
+    ctx.stdlib = Some(&stdlib);
+
+    let func = FunctionDef {
+        name: "DoubleIt".into(),
+        return_type: None,
+        params: vec![
+            Param {
+                name: "raw".into(),
+                type_id: TypeId::INT,
+                direction: ParamDirection::In,
+                address: None,
+                default: None,
+            },
+            Param {
+                name: "doubled".into(),
+                type_id: TypeId::INT,
+                direction: ParamDirection::Out,
+                address: None,
+                default: None,
+            },
+        ],
+        locals: Vec::new(),
+        static_locals: Vec::new(),
+        using: Vec::new(),
+        body: vec![Stmt::Assign {
+            target: LValue::Name("doubled".into()),
+            value: Expr::Binary {
+                op: BinaryOp::Add,
+                left: Box::new(Expr::Name("raw".into())),
+                right: Box::new(Expr::Name("raw".into())),
+            },
+            location: None,
+        }],
+    };
+
+    let args = vec![
+        CallArg {
+            name: Some("raw".into()),
+            value: ArgValue::Expr(Expr::Literal(Value::Int(21))),
+        },
+        CallArg {
+            name: Some("doubled".into()),
+            value: ArgValue::Target(LValue::Name("result".into())),
+        },
+    ];
+
+    let result = call_function(&mut ctx, &func, &args).unwrap();
+    assert_eq!(result, Value::Null);
+    assert_eq!(storage.get_global("result"), Some(&Value::Int(42)));
 }
 
 fn assert_init_failed(err: RuntimeError, owner: &str, variable: &str) {
